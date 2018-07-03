@@ -9,7 +9,7 @@ Gem::Specification.new do |spec|
   spec.authors       = ["Andrew Kane"]
   spec.email         = ["andrew@chartkick.com"]
   spec.summary       = "A performance dashboard for Postgres"
-  spec.homepage      = "https://github.com/ankane/pghero"
+  spec.homepage      = "https://github.com/NaisilaPuka/pghero"
   spec.license       = "MIT"
 
   spec.files         = `git ls-files -z`.split("\x0")
