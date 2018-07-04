@@ -18,7 +18,10 @@
         <% elsif Rails.env.development? %>
           Do not use development information to make decisions about your production environment
         <% else %>
-          <%= link_to "PgHero", root_path %>
+          <% if @citus_enabled %>
+            <%= link_to "PgHero > Citus Mode", root_path %>
+          <% else %>
+            <%= link_to "PgHero", root_path %>
         <% end %>
       </div>
 
