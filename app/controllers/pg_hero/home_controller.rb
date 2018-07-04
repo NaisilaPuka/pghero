@@ -23,7 +23,8 @@ module PgHero
     def index
       @title = "Overview"
       @extended = params[:extended]
-
+      @citus_enabled = @database.citus_enabled?
+      
       if @replica
         @replication_lag = @database.replication_lag
         @good_replication_lag = @replication_lag ? @replication_lag < 5 : true
@@ -70,6 +71,7 @@ module PgHero
       @title = "Space"
       @days = (params[:days] || 7).to_i
       @database_size = @database.database_size
+      @citus_enabled = @database.citus_enabled?
       @relation_sizes = params[:tables] ? @database.table_sizes : @database.relation_sizes
       @space_stats_enabled = @database.space_stats_enabled? && !params[:tables]
       if @space_stats_enabled
@@ -107,8 +109,9 @@ module PgHero
 
     def live_queries
       @title = "Live Queries"
+      @citus_enabled = @database.citus_enabled?
       @running_queries = @database.running_queries(all: true)
-      @vacuum_progress = @database.vacuum_progress.index_by { |q| q[:pid] }
+      @vacuum_progress = @database.vacuum_progress.index_by { |q| q[:pid] }  
     end
 
     def queries
@@ -116,6 +119,7 @@ module PgHero
       @sort = %w(average_time calls).include?(params[:sort]) ? params[:sort] : nil
       @min_average_time = params[:min_average_time] ? params[:min_average_time].to_i : nil
       @min_calls = params[:min_calls] ? params[:min_calls].to_i : nil
+      @citus_enabled = @database.citus_enabled?
 
       if @historical_query_stats_enabled
         begin
@@ -193,6 +197,7 @@ module PgHero
       }
       @duration = (params[:duration] || 1.hour).to_i
       @period = (params[:period] || 60.seconds).to_i
+      @citus_enabled = @database.citus_enabled?
 
       if @duration / @period > 1440
         render_text "Too many data points"
@@ -229,6 +234,7 @@ module PgHero
     def explain
       @title = "Explain"
       @query = params[:query]
+      @citus_enabled = @database.citus_enabled?
       # TODO use get + token instead of post so users can share links
       # need to prevent CSRF and DoS
       if request.post? && @query
@@ -259,21 +265,37 @@ module PgHero
       @title = "Tune"
       @settings = @database.settings
       @autovacuum_settings = @database.autovacuum_settings if params[:autovacuum]
+      @citus_enabled = @database.citus_enabled?
     end
 
     def connections
       @title = "Connections"
       @connection_sources = @database.connection_sources
       @total_connections = @connection_sources.sum { |cs| cs[:total_connections] }
-
+      @citus_enabled = @database.citus_enabled?
+      
       @connections_by_database = group_connections(@connection_sources, :database)
       @connections_by_user = group_connections(@connection_sources, :user)
+      if @citus_enabled
+        @citus_nodesno = @database.citus_nodesno
+        @citus_worker_connection_sources = @database.citus_worker_connection_sources(@citus_nodesno)
+        @citus_worker_total_connections = @database.citus_worker_total_connections(@citus_nodesno)
+        @citus_worker_connections_by_database = Array.new(@citus_nodesno)
+        @citus_worker_connections_by_user = Array.new(@citus_nodesno)
+        count_citus_workers = 0
+        while count_citus_workers < @citus_nodesno
+          @citus_worker_connections_by_database[count_citus_workers] = group_connections(@citus_worker_connection_sources[count_citus_workers], :database)
+          @citus_worker_connections_by_user[count_citus_workers] = group_connections(@citus_worker_connection_sources[count_citus_workers], :user)
+          count_citus_workers = count_citus_workers + 1
+        end
+      end    
     end
 
     def maintenance
       @title = "Maintenance"
       @maintenance_info = @database.maintenance_info
       @time_zone = PgHero.time_zone
+      @citus_enabled = @database.citus_enabled?
     end
 
     def kill
