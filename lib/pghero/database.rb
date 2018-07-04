@@ -1,6 +1,7 @@
 module PgHero
   class Database
     include Methods::Basic
+    include Methods::Citus
     include Methods::Connections
     include Methods::Explain
     include Methods::Indexes

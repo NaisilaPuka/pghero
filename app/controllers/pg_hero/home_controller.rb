@@ -66,10 +66,18 @@ module PgHero
       @show_migrations = PgHero.show_migrations
     end
 
+ def citus
+      @title = "Citus"
+      @citus_enabled = @database.citus_enabled?
+      if @citus_enabled
+       @citus_version = @database.citus_version
+      end
+    end
     def space
       @title = "Space"
       @days = (params[:days] || 7).to_i
       @database_size = @database.database_size
+      @citus_enabled = @database.citus_enabled?
       @relation_sizes = params[:tables] ? @database.table_sizes : @database.relation_sizes
       @space_stats_enabled = @database.space_stats_enabled? && !params[:tables]
       if @space_stats_enabled
