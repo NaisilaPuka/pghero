@@ -129,7 +129,7 @@ module PgHero
       @sort = %w(average_time calls).include?(params[:sort]) ? params[:sort] : nil
       @min_average_time = params[:min_average_time] ? params[:min_average_time].to_i : nil
       @min_calls = params[:min_calls] ? params[:min_calls].to_i : nil
-      #@citus_enabled = @database.citus_enabled?
+      @citus_enabled = @database.citus_enabled?
 
       if @historical_query_stats_enabled
         begin
