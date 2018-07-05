@@ -1,7 +1,10 @@
 module PgHero
   module Methods
     module Space
-      include Citus
+      
+      def initialize
+        @citus = Citus.new
+      end
       
       def database_size
         @citus_enabled = @citus.citus_enabled?
