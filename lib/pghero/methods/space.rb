@@ -1,21 +1,24 @@
 module PgHero
   module Methods
     module Space
-      include Citus
       
       def initialize
-        @citus = Citus.new
+        @c = Citus.new
+      end
+      
+      def citus_size?
+        @c.citus_enabled?
       end
       
       def database_size
-        @citus_enabled = @citus.citus_readable?
-        if @citus_enabled
+        if citus_size?
           PgHero.pretty_size select_one("SELECT SUM(result::bigint) FROM run_command_on_workers($cmd$ SELECT pg_database_size(current_database()); $cmd$)")
         else
           PgHero.pretty_size select_one("SELECT pg_database_size(current_database())")
         end
       end
 
+      
       def relation_sizes
         select_all_size <<-SQL
           SELECT 
