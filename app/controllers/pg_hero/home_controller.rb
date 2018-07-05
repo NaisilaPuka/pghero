@@ -23,7 +23,7 @@ module PgHero
     def index
       @title = "Overview"
       @extended = params[:extended]
-
+      @citus_enabled = @database.citus_enabled?
       if @replica
         @replication_lag = @database.replication_lag
         @good_replication_lag = @replication_lag ? @replication_lag < 5 : true
@@ -32,7 +32,7 @@ module PgHero
       end
 
       @autovacuum_queries, @long_running_queries = @database.long_running_queries.partition { |q| q[:query].starts_with?("autovacuum:") }
-      #@citus_enabled = @database.citus_enabled?
+      
       @total_connections = @database.total_connections
       @good_total_connections = @total_connections < @database.total_connections_threshold
 
@@ -118,9 +118,10 @@ module PgHero
 
     def live_queries
       @title = "Live Queries"
+      @citus_enabled = @database.citus_enabled?
       @running_queries = @database.running_queries(all: true)
       @vacuum_progress = @database.vacuum_progress.index_by { |q| q[:pid] }
-      #@citus_enabled = @database.citus_enabled?
+      
     end
 
     def queries
@@ -246,7 +247,7 @@ module PgHero
     def explain
       @title = "Explain"
       @query = params[:query]
-      #@citus_enabled = @database.citus_enabled?
+      @citus_enabled = @database.citus_enabled?
       # TODO use get + token instead of post so users can share links
       # need to prevent CSRF and DoS
       if request.post? && @query
@@ -277,24 +278,24 @@ module PgHero
       @title = "Tune"
       @settings = @database.settings
       @autovacuum_settings = @database.autovacuum_settings if params[:autovacuum]
-      #@citus_enabled = @database.citus_enabled?
+      @citus_enabled = @database.citus_enabled?
     end
 
     def connections
       @title = "Connections"
       @connection_sources = @database.connection_sources
       @total_connections = @connection_sources.sum { |cs| cs[:total_connections] }
-
+      @citus_enabled = @database.citus_enabled?
       @connections_by_database = group_connections(@connection_sources, :database)
       @connections_by_user = group_connections(@connection_sources, :user)
-      #@citus_enabled = @database.citus_enabled?
+      
     end
 
     def maintenance
       @title = "Maintenance"
       @maintenance_info = @database.maintenance_info
       @time_zone = PgHero.time_zone
-      #@citus_enabled = @database.citus_enabled?
+      @citus_enabled = @database.citus_enabled?
     end
 
     def kill
