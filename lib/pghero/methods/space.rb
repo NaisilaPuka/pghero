@@ -13,54 +13,95 @@ module PgHero
 
       
       def relation_sizes
-        select_all_size <<-SQL
-          SELECT 
-            n.nspname AS SCHEMA, 
-            c.relname AS relation, 
-            CASE WHEN c.relkind = 'r' THEN 'table' ELSE 'index' END AS type, 
-            CASE WHEN ((SELECT 
-                          Count(*) 
-                        FROM 
-                          pg_dist_partition 
-                        WHERE 
-                          logicalrelid = c.oid) > 0) THEN citus_relation_size(c.oid) ELSE pg_table_size(c.oid) END AS size_bytes 
-          FROM   
-            pg_class c 
-          LEFT JOIN 
-            pg_namespace n ON n.oid = c.relnamespace 
-          WHERE  
-            n.nspname NOT IN ( 'pg_catalog', 'information_schema' ) 
-            AND n.nspname !~ '^pg_toast' 
-            AND c.relkind IN ( 'r', 'i' ) 
-          ORDER BY 
-            size_bytes DESC, 
-            2 ASC
-        SQL
+        if citus_enabled?
+          select_all_size <<-SQL
+            SELECT 
+              n.nspname AS SCHEMA, 
+              c.relname AS relation, 
+              CASE WHEN c.relkind = 'r' THEN 'table' ELSE 'index' END AS type, 
+              CASE WHEN ((SELECT 
+                            Count(*) 
+                          FROM 
+                            pg_dist_partition 
+                          WHERE 
+                            logicalrelid = c.oid) > 0) THEN citus_relation_size(c.oid) ELSE pg_table_size(c.oid) END AS size_bytes 
+            FROM   
+              pg_class c 
+            LEFT JOIN 
+              pg_namespace n ON n.oid = c.relnamespace 
+            WHERE  
+              n.nspname NOT IN ( 'pg_catalog', 'information_schema' ) 
+              AND n.nspname !~ '^pg_toast' 
+              AND c.relkind IN ( 'r', 'i' ) 
+            ORDER BY 
+              size_bytes DESC, 
+              2 ASC
+          SQL
+        else 
+          select_all_size <<-SQL
+            SELECT
+              n.nspname AS schema,
+              c.relname AS relation,
+              CASE WHEN c.relkind = 'r' THEN 'table' ELSE 'index' END AS type,
+              pg_table_size(c.oid) AS size_bytes
+            FROM
+              pg_class c
+            LEFT JOIN
+              pg_namespace n ON n.oid = c.relnamespace
+            WHERE
+              n.nspname NOT IN ('pg_catalog', 'information_schema')
+              AND n.nspname !~ '^pg_toast'
+              AND c.relkind IN ('r', 'i')
+            ORDER BY
+              pg_table_size(c.oid) DESC,
+              2 ASC
+          SQL
+        end
       end
 
       def table_sizes
-        select_all_size <<-SQL
-          SELECT 
-            n.nspname AS SCHEMA, 
-            c.relname AS table, 
-            CASE WHEN ((SELECT 
-                          Count(*) 
-                        FROM   
-                          pg_dist_partition 
-                        WHERE  
-                          logicalrelid = c.oid) > 0) THEN citus_total_relation_size(c.oid) ELSE pg_total_relation_size(c.oid) END AS size_bytes 
-          FROM   
-            pg_class c 
-          LEFT JOIN 
-            pg_namespace n ON n.oid = c.relnamespace 
-          WHERE 
-            n.nspname NOT IN ( 'pg_catalog', 'information_schema' ) 
-            AND n.nspname !~ '^pg_toast' 
-            AND c.relkind = 'r' 
-          ORDER BY 
-            size_bytes DESC, 
-            2 ASC
-        SQL
+        if citus_enabled?
+          select_all_size <<-SQL
+            SELECT 
+              n.nspname AS SCHEMA, 
+              c.relname AS table, 
+              CASE WHEN ((SELECT 
+                            Count(*) 
+                          FROM   
+                            pg_dist_partition 
+                          WHERE  
+                            logicalrelid = c.oid) > 0) THEN citus_total_relation_size(c.oid) ELSE pg_total_relation_size(c.oid) END AS size_bytes 
+            FROM   
+              pg_class c 
+            LEFT JOIN 
+              pg_namespace n ON n.oid = c.relnamespace 
+            WHERE 
+              n.nspname NOT IN ( 'pg_catalog', 'information_schema' ) 
+              AND n.nspname !~ '^pg_toast' 
+              AND c.relkind = 'r' 
+            ORDER BY 
+              size_bytes DESC, 
+              2 ASC
+          SQL
+        else
+          select_all_size <<-SQL
+            SELECT
+              n.nspname AS schema,
+              c.relname AS table,
+              pg_total_relation_size(c.oid) AS size_bytes
+            FROM
+              pg_class c
+            LEFT JOIN
+              pg_namespace n ON n.oid = c.relnamespace
+            WHERE
+              n.nspname NOT IN ('pg_catalog', 'information_schema')
+              AND n.nspname !~ '^pg_toast'
+              AND c.relkind = 'r'
+            ORDER BY
+              pg_total_relation_size(c.oid) DESC,
+              2 ASC
+          SQL
+        end
       end
 
       def space_growth(days: 7, relation_sizes: nil)
