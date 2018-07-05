@@ -32,7 +32,7 @@ module PgHero
       end
 
       @autovacuum_queries, @long_running_queries = @database.long_running_queries.partition { |q| q[:query].starts_with?("autovacuum:") }
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
       @total_connections = @database.total_connections
       @good_total_connections = @total_connections < @database.total_connections_threshold
 
@@ -104,7 +104,7 @@ module PgHero
       @schema = params[:schema] || "public"
       @relation = params[:relation]
       @title = @relation
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
       relation_space_stats = @database.relation_space_stats(@relation, schema: @schema)
       @chart_data = [{name: "Value", data: relation_space_stats.map { |r| [r[:captured_at], (r[:size_bytes].to_f / 1.megabyte).round(1)] }, library: chart_library_options}]
     end
@@ -113,14 +113,14 @@ module PgHero
       @title = "Index Bloat"
       @index_bloat = @database.index_bloat
       @show_sql = params[:sql]
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def live_queries
       @title = "Live Queries"
       @running_queries = @database.running_queries(all: true)
       @vacuum_progress = @database.vacuum_progress.index_by { |q| q[:pid] }
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def queries
@@ -128,7 +128,7 @@ module PgHero
       @sort = %w(average_time calls).include?(params[:sort]) ? params[:sort] : nil
       @min_average_time = params[:min_average_time] ? params[:min_average_time].to_i : nil
       @min_calls = params[:min_calls] ? params[:min_calls].to_i : nil
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
 
       if @historical_query_stats_enabled
         begin
@@ -167,7 +167,7 @@ module PgHero
       @query_hash = params[:query_hash].to_i
       @user = params[:user].to_s
       @title = @query_hash
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
       stats = @database.query_stats(historical: true, query_hash: @query_hash, start_at: 24.hours.ago).find { |qs| qs[:user] == @user }
       if stats
         @query = stats[:query]
@@ -206,7 +206,7 @@ module PgHero
       }
       @duration = (params[:duration] || 1.hour).to_i
       @period = (params[:period] || 60.seconds).to_i
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
       if @duration / @period > 1440
         render_text "Too many data points"
       elsif @period % 60 != 0
@@ -216,17 +216,17 @@ module PgHero
 
     def cpu_usage
       render json: [{name: "CPU", data: @database.cpu_usage(system_params).map { |k, v| [k, v.round] }, library: chart_library_options}]
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def connection_stats
       render json: [{name: "Connections", data: @database.connection_stats(system_params), library: chart_library_options}]
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def replication_lag_stats
       render json: [{name: "Lag", data: @database.replication_lag_stats(system_params), library: chart_library_options}]
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def load_stats
@@ -240,13 +240,13 @@ module PgHero
       render json: [
         {name: "Free Space", data: @database.free_space_stats(duration: 14.days, period: 1.hour).map { |k, v| [k, (v / 1.gigabyte).round] }, library: chart_library_options},
       ]
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def explain
       @title = "Explain"
       @query = params[:query]
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
       # TODO use get + token instead of post so users can share links
       # need to prevent CSRF and DoS
       if request.post? && @query
@@ -277,7 +277,7 @@ module PgHero
       @title = "Tune"
       @settings = @database.settings
       @autovacuum_settings = @database.autovacuum_settings if params[:autovacuum]
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def connections
@@ -287,14 +287,14 @@ module PgHero
 
       @connections_by_database = group_connections(@connection_sources, :database)
       @connections_by_user = group_connections(@connection_sources, :user)
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def maintenance
       @title = "Maintenance"
       @maintenance_info = @database.maintenance_info
       @time_zone = PgHero.time_zone
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def kill
@@ -303,19 +303,19 @@ module PgHero
       else
         redirect_backward notice: "Query no longer running"
       end
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def kill_long_running_queries
       @database.kill_long_running_queries
       redirect_backward notice: "Queries killed"
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def kill_all
       @database.kill_all
       redirect_backward notice: "Connections killed"
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def enable_query_stats
@@ -323,7 +323,7 @@ module PgHero
       redirect_backward notice: "Query stats enabled"
     rescue ActiveRecord::StatementInvalid
       redirect_backward alert: "The database user does not have permission to enable query stats"
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def reset_query_stats
@@ -331,7 +331,7 @@ module PgHero
       redirect_backward notice: "Query stats reset"
     rescue ActiveRecord::StatementInvalid
       redirect_backward alert: "The database user does not have permission to reset query stats"
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     protected
@@ -354,19 +354,19 @@ module PgHero
       else
         @database = @databases.first
       end
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def default_url_options
       {database: params[:database]}
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def set_query_stats_enabled
       @query_stats_enabled = @database.query_stats_enabled?
       @system_stats_enabled = @database.system_stats_enabled?
       @replica = @database.replica?
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def set_suggested_indexes(min_average_time = 0, min_calls = 0)
@@ -380,7 +380,7 @@ module PgHero
       @suggested_indexes = @database.suggested_indexes(suggested_indexes_by_query: @suggested_indexes_by_query, indexes: @indexes)
       @query_stats_by_query = @query_stats.index_by { |q| q[:query] }
       @debug = params[:debug].present?
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def system_params
@@ -388,18 +388,18 @@ module PgHero
         duration: params[:duration],
         period: params[:period]
       }.delete_if { |_, v| v.nil? }
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def chart_library_options
       {pointRadius: 0, pointHitRadius: 5, borderWidth: 4}
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def set_show_details
       @historical_query_stats_enabled = @query_stats_enabled && @database.historical_query_stats_enabled?
       @show_details = @historical_query_stats_enabled && @database.supports_query_hash?
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def group_connections(connection_sources, key)
@@ -408,12 +408,12 @@ module PgHero
         top_connections[source[key]] += source[:total_connections]
       end
       top_connections.sort_by { |k, v| [-v, k] }
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def check_api
       render_text "No support for Rails API. See https://github.com/pghero/pghero for a standalone app." if Rails.application.config.try(:api_only)
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def render_text(message)
@@ -422,14 +422,14 @@ module PgHero
       else
         render text: message
       end
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
 
     def ensure_query_stats
       unless @query_stats_enabled
         redirect_to root_path, alert: "Query stats not enabled"
       end
-      @citus_enabled = @database.citus_enabled?
+      #@citus_enabled = @database.citus_enabled?
     end
   end
 end
