@@ -5,7 +5,9 @@ module PgHero
       
       def database_size
         if citus_enabled?
-          PgHero.pretty_size select_one("SELECT SUM(result::bigint) FROM run_command_on_workers($cmd$ SELECT pg_database_size(current_database()); $cmd$)")
+          #PgHero.pretty_size select_one("SELECT SUM(result::bigint) FROM run_command_on_workers($cmd$ SELECT pg_database_size(current_database()); $cmd$)")
+          #sum coordinator size with workers' sizes.
+          PgHero.pretty_size select_one("SELECT SUM(size) FROM (SELECT pg_database_size(current_database()) AS size UNION ALL SELECT result::bigint AS size FROM run_command_on_workers($cmd$ SELECT pg_database_size(current_database()); $cmd$)) AS total_size")
         else
           PgHero.pretty_size select_one("SELECT pg_database_size(current_database())")
         end
