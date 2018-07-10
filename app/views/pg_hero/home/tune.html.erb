@@ -17,6 +17,24 @@
       <% end %>
     </tbody>
   </table>
+<% if @citus_enabled %>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Worker Setting</th>
+        <th style="width: 20%;">Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @worker_settings.each do |worker_setting, value| %>
+        <tr>
+          <td><%= worker_setting %></td>
+          <td><%= value %></td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>
 
   <p>Check out <%= link_to "PgTune", "https://pgtune.leopard.in.ua/", target: "_blank" %> for recommendations. DB version is <%= @database.server_version.split(" ").first.split(".").first(2).join(".") %>.</p>
 </div>
