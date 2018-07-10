@@ -53,7 +53,7 @@ module PgHero
       end
 
       def fetch_worker_settings(worker_names)
-        Hash[worker_names.map { |worker_name| [worker_name, select_one(“SELECT result FROM run_command_on_workers($cmd$ SHOW #{worker_name} $cmd$) LIMIT 1”)] }]
+        Hash[worker_names.map { |worker_name| [worker_name, select_one("SELECT result FROM run_command_on_workers($cmd$ SHOW #{worker_name} $cmd$) LIMIT 1")] }]
       end
     end
   end
