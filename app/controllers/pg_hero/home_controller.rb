@@ -277,9 +277,12 @@ module PgHero
     def tune
       @title = "Tune"
       @settings = @database.settings
-      @worker_settings = @database.worker_settings
-      @autovacuum_settings = @database.autovacuum_settings if params[:autovacuum]
       @citus_enabled = @database.citus_enabled?
+      if @citus_enabled
+        @worker_settings = @database.worker_settings
+      end
+      @autovacuum_settings = @database.autovacuum_settings if params[:autovacuum]
+      
     end
 
     def connections
