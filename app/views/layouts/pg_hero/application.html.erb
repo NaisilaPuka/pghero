@@ -18,11 +18,11 @@
         <% elsif Rails.env.development? %>
           Do not use development information to make decisions about your production environment
         <% else %>
--         <% if @citus_enabled %>
--           <%= link_to "CitusHero", root_path %>
--         <% else %>
+          <% if @citus_enabled %>
+            <%= link_to "CitusHero", root_path %>
+          <% else %>
             <%= link_to "PgHero", root_path %>
--         <% end %>
+          <% end %>
         <% end %>
       </div>
 
