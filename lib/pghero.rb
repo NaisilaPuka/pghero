@@ -55,7 +55,7 @@ module PgHero
       :last_stats_reset_time, :long_running_queries, :maintenance_info, :missing_indexes, :query_stats,
       :query_stats_available?, :query_stats_enabled?, :query_stats_extension_enabled?, :query_stats_readable?,
       :rds_stats, :read_iops_stats, :region, :relation_sizes, :replica?, :replication_lag, :replication_lag_stats,
-      :reset_query_stats, :reset_stats, :running_queries, :secret_access_key, :sequence_danger, :sequences, :settings, :worker_settings
+      :reset_query_stats, :reset_stats, :running_queries, :secret_access_key, :sequence_danger, :sequences, :settings, :worker_settings,
       :slow_queries, :space_growth, :ssl_used?, :stats_connection, :suggested_indexes, :suggested_indexes_by_query,
       :suggested_indexes_enabled?, :system_stats_enabled?, :table_caching, :table_hit_rate, :table_stats,
       :total_connections, :transaction_id_danger, :unused_indexes, :unused_tables, :write_iops_stats
