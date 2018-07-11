@@ -19,5 +19,13 @@
     </script>
 
     <%= render partial: "connections_table", locals: {connection_sources: @connection_sources} %>
+
+    <% if @citus_enabled %>
+      <% x = 0 %>
+      <% while x < @citus_nodesno %>
+        <%= render partial: "connections_table", locals: {connection_sources: @worker_connection_sources[x]} %>
+        <% x = x + 1 %>
+      <% end %>
+    <% end %>
   <% end %>
 </div>

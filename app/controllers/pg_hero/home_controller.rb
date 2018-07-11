@@ -288,8 +288,12 @@ module PgHero
     def connections
       @title = "Connections"
       @connection_sources = @database.connection_sources
-      @total_connections = @connection_sources.sum { |cs| cs[:total_connections] }
       @citus_enabled = @database.citus_enabled?
+      if @citus_enabled
+        @citus_nodesno = @database.citus_nodesno
+        @worker_connection_sources = @database.worker_connection_sources(@citus_nodesno)
+      end
+      @total_connections = @connection_sources.sum { |cs| cs[:total_connections] }      
       @connections_by_database = group_connections(@connection_sources, :database)
       @connections_by_user = group_connections(@connection_sources, :user)
       
