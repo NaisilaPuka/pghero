@@ -24,6 +24,10 @@ module PgHero
       rescue ActiveRecord::StatementInvalid
         false
       end
+      
+      def citus_nodesno
+        @citus_nodesno ||= select_one("SELECT COUNT(*) FROM master_get_active_worker_nodes()")
+      end
     end
   end
 end

@@ -266,10 +266,9 @@ module PgHero
       @settings = @database.settings
       @citus_enabled = @database.citus_enabled?
       if @citus_enabled
-        @worker_settings = @database.worker_settings
+        @citus_worker_settings = @database.citus_worker_settings
       end
-      @autovacuum_settings = @database.autovacuum_settings if params[:autovacuum]
-      
+      @autovacuum_settings = @database.autovacuum_settings if params[:autovacuum]     
     end
 
     def connections
