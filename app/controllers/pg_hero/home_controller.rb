@@ -292,6 +292,7 @@ module PgHero
       if @citus_enabled
         @citus_nodesno = @database.citus_nodesno
         @worker_connection_sources = @database.worker_connection_sources(@citus_nodesno)
+        @worker_total_connections = @database.worker_total_connections(@citus_nodesno)
       end
       @total_connections = @connection_sources.sum { |cs| cs[:total_connections] }      
       @connections_by_database = group_connections(@connection_sources, :database)

@@ -5,6 +5,16 @@ module PgHero
         select_one("SELECT COUNT(*) FROM pg_stat_activity")
       end
 
+      def worker_total_connections(nodesno)
+        total = Array.new(nodesno)
+        z = 0
+        while z < nodesno
+          total[z] = select_one("select result from run_command_on_workers($cmd$ SELECT COUNT(*) FROM pg_stat_activity $cmd$) limit 1 offset #{z}”)
+          z = z + 1
+        end
+        return total
+      end
+
       def connection_sources
         select_all <<-SQL
           SELECT

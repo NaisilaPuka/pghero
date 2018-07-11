@@ -19,13 +19,16 @@
     </script>
 
     <%= render partial: "connections_table", locals: {connection_sources: @connection_sources} %>
-
-    <% if @citus_enabled %>
-      <% x = 0 %>
-      <% while x < @citus_nodesno %>
+  <% end %>
+  <% if @citus_enabled %>
+    <% x = 0 %>
+    <% while x < @citus_nodesno %>
+      <p><%= pluralize(@worker_total_connections[x], "connection") %></p>
+      
+      <% if @worker_total_connections[x] > 0 %>      
         <%= render partial: "connections_table", locals: {connection_sources: @worker_connection_sources[x]} %>
-        <% x = x + 1 %>
       <% end %>
+      <% x = x + 1 %>
     <% end %>
   <% end %>
 </div>
