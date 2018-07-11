@@ -32,14 +32,14 @@
 
       <div id="chart-1" class="chart" style="height: 260px; line-height: 260px; margin-bottom: 20px;">Loading...</div>
       <script>
-        new Chartkick.PieChart("chart-1", <%= json_escape(@worker_connections_by_database[x].to_json).html_safe %>);
+        new Chartkick.PieChart("chart-3", <%= json_escape(@worker_connections_by_database[x].to_json).html_safe %>);
       </script>
 
       <h3>By User</h3>
 
       <div id="chart-2" class="chart" style="height: 260px; line-height: 260px; margin-bottom: 20px;">Loading...</div>
       <script>
-        new Chartkick.PieChart("chart-2", <%= json_escape(@worker_connections_by_user[x].to_json).html_safe %>);
+        new Chartkick.PieChart("chart-4", <%= json_escape(@worker_connections_by_user[x].to_json).html_safe %>);
       </script>
       <p><%= pluralize(@worker_total_connections[x], "connection") %></p>      
       <%= render partial: "connections_table", locals: {connection_sources: @worker_connection_sources[x]} %>
