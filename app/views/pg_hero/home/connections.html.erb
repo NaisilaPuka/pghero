@@ -30,14 +30,14 @@
       <h2>Worker <%= x + 1 %></h2>
       <h3>By Database</h3>
 
-      <div id="chart-1" class="chart" style="height: 260px; line-height: 260px; margin-bottom: 20px;">Loading...</div>
+      <div id="chart-3" class="chart" style="height: 260px; line-height: 260px; margin-bottom: 20px;">Loading...</div>
       <script>
         new Chartkick.PieChart("chart-3", <%= json_escape(@worker_connections_by_database[x].to_json).html_safe %>);
       </script>
 
       <h3>By User</h3>
 
-      <div id="chart-2" class="chart" style="height: 260px; line-height: 260px; margin-bottom: 20px;">Loading...</div>
+      <div id="chart-4" class="chart" style="height: 260px; line-height: 260px; margin-bottom: 20px;">Loading...</div>
       <script>
         new Chartkick.PieChart("chart-4", <%= json_escape(@worker_connections_by_user[x].to_json).html_safe %>);
       </script>
