@@ -9,7 +9,7 @@ module PgHero
         total = Array.new(nodesno)
         z = 0
         while z < nodesno
-          total[z] = select_one("select result from run_command_on_workers($cmd$ SELECT COUNT(*) FROM pg_stat_activity $cmd$) limit 1 offset #{z}”)
+          total[z] = select_one("select result from run_command_on_workers($cmd$ SELECT COUNT(*) FROM pg_stat_activity $cmd$) limit 1 offset #{z}")
           z = z + 1
         end
         return total
