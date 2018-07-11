@@ -1,5 +1,9 @@
 <div class="content">
   <h1>Connections</h1>
+  
+  <% if @citus_enabled %>
+    <h2>Coordinator</h2>
+  <% end %>
 
   <p><%= pluralize(@total_connections, "connection") %></p>
 
@@ -19,5 +23,28 @@
     </script>
 
     <%= render partial: "connections_table", locals: {connection_sources: @connection_sources} %>
+  <% end %>
+  <% if @citus_enabled %>
+    <% worker_connections = @citus_worker_connections_by_database.zip(@citus_worker_connections_by_user) %>
+    <% chart_count = 3 %>
+    <% worker_connections.each_with_index do |(conn_database, conn_user), index| %>
+      <h2>Worker <%= index + 1 %></h2>
+      <p><%= pluralize(@citus_worker_total_connections[index], "connection") %></p>
+      <h3>By Database</h3>
+
+      <div id="chart-<%= chart_count %>" class="chart" style="height: 260px; line-height: 260px; margin-bottom: 20px;">Loading...</div>
+      <script>
+        new Chartkick.PieChart("chart-<%= chart_count %>", <%= json_escape(conn_database.to_json).html_safe %>);
+      </script>
+      <% chart_count += 1 %>
+      <h3>By User</h3>
+
+      <div id="chart-<%=  chart_count %>" class="chart" style="height: 260px; line-height: 260px; margin-bottom: 20px;">Loading...</div>
+      <script>
+        new Chartkick.PieChart("chart-<%= chart_count %>", <%= json_escape(conn_user.to_json).html_safe %>);
+      </script>
+      <% chart_count += 1 %>  
+      <%= render partial: "connections_table", locals: {connection_sources: @citus_worker_connection_sources[index]} %>
+    <% end %>
   <% end %>
 </div>
