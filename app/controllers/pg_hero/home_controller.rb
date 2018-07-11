@@ -295,10 +295,10 @@ module PgHero
         @citus_nodesno = @database.citus_nodesno
         @worker_connection_sources = @database.worker_connection_sources(@citus_nodesno)
         @worker_total_connections = @database.worker_total_connections(@citus_nodesno)
-        @worker_connections_by_database = Array.new(@citus.nodesno)
-        @worker_connections_by_user = Array.new(@citus.nodesno)
+        @worker_connections_by_database = Array.new(@citus_nodesno)
+        @worker_connections_by_user = Array.new(@citus_nodesno)
         count_workers = 0
-        while count_workers < @citus.nodesno
+        while count_workers < @citus_nodesno
           @worker_connections_by_database[count_workers] = group_connections(@worker_connection_sources[count_workers], :database)
           @worker_connections_by_user[count_workers] = group_connections(@worker_connection_sources[count_workers], :user)
           count_workers = count_workers + 1
