@@ -281,23 +281,29 @@ module PgHero
       if @citus_enabled
         @worker_settings = @database.worker_settings
       end
-      @autovacuum_settings = @database.autovacuum_settings if params[:autovacuum]
-      
+      @autovacuum_settings = @database.autovacuum_settings if params[:autovacuum]     
     end
 
     def connections
       @title = "Connections"
       @connection_sources = @database.connection_sources
+      @total_connections = @connection_sources.sum { |cs| cs[:total_connections] }      
+      @connections_by_database = group_connections(@connection_sources, :database)
+      @connections_by_user = group_connections(@connection_sources, :user)
       @citus_enabled = @database.citus_enabled?
       if @citus_enabled
         @citus_nodesno = @database.citus_nodesno
         @worker_connection_sources = @database.worker_connection_sources(@citus_nodesno)
         @worker_total_connections = @database.worker_total_connections(@citus_nodesno)
-      end
-      @total_connections = @connection_sources.sum { |cs| cs[:total_connections] }      
-      @connections_by_database = group_connections(@connection_sources, :database)
-      @connections_by_user = group_connections(@connection_sources, :user)
-      
+        @worker_connections_by_database = Array.new(@citus.nodesno)
+        @worker_connections_by_user = Array.new(@citus.nodesno)
+        count_workers = 0
+        while count_workers < @citus.nodesno
+          @worker_connections_by_database[count_workers] = group_connections(@worker_connection_sources[count_workers], :database)
+          @worker_connections_by_user[count_workers] = group_connections(@worker_connection_sources[count_workers], :user)
+          count_workers = count_workers + 1
+        end
+      end    
     end
 
     def maintenance
