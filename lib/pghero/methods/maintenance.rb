@@ -51,7 +51,21 @@ module PgHero
       end
 
       def maintenance_info
-        if citus_enabled?
+        if !citus_enabled?
+          select_all <<-SQL
+            SELECT
+              schemaname AS schema,
+              relname AS table,
+              last_vacuum,
+              last_autovacuum,
+              last_analyze,
+              last_autoanalyze
+            FROM
+              pg_stat_user_tables
+            ORDER BY
+              1, 2                          
+          SQL
+        else
           select_all <<-SQL
             WITH dist_maintenance_info AS (
               SELECT
@@ -205,20 +219,6 @@ module PgHero
               END AS last_autoanalyze 
             FROM
               pg_stat_user_tables 
-            ORDER BY
-              1, 2                          
-          SQL
-        else
-          select_all <<-SQL
-            SELECT
-              schemaname AS schema,
-              relname AS table,
-              last_vacuum,
-              last_autovacuum,
-              last_analyze,
-              last_autoanalyze
-            FROM
-              pg_stat_user_tables
             ORDER BY
               1, 2
           SQL

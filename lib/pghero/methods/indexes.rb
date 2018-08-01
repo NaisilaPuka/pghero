@@ -4,7 +4,14 @@ module PgHero
       include Citus
 
       def index_hit_rate
-        if citus_enabled?
+        if !citus_enabled?
+          select_one <<-SQL
+            SELECT
+              (sum(idx_blks_hit)) / nullif(sum(idx_blks_hit + idx_blks_read), 0) AS rate
+            FROM
+              pg_statio_user_indexes
+          SQL
+        else
           select_one <<-SQL
             WITH worker_index_stats AS(
               SELECT
@@ -41,20 +48,29 @@ module PgHero
                 CROSS JOIN
                   json_to_recordset(worker_index_stats.result::json) AS x("hit" int, "hit_and_read" int) 
               )
-              AS cluster_index_table
-          SQL
-        else
-          select_one <<-SQL
-            SELECT
-              (sum(idx_blks_hit)) / nullif(sum(idx_blks_hit + idx_blks_read), 0) AS rate
-            FROM
-              pg_statio_user_indexes
+              AS cluster_index_table         
           SQL
         end
       end
 
       def index_caching
-        if citus_enabled?
+        if !citus_enabled?
+          select_all <<-SQL
+            SELECT
+              schemaname AS schema,
+              relname AS table,
+              indexrelname AS index,
+              CASE WHEN idx_blks_hit + idx_blks_read = 0 THEN
+                0
+              ELSE
+                ROUND(1.0 * idx_blks_hit / (idx_blks_hit + idx_blks_read), 2)
+              END AS hit_rate
+            FROM
+              pg_statio_user_indexes
+            ORDER BY
+              3 DESC, 1
+          SQL
+        else
           select_all <<-SQL
             WITH pg_dist_index_caching AS(
               WITH indices (idxname, tablename) AS(
@@ -128,29 +144,29 @@ module PgHero
             FROM
               pg_statio_user_indexes 
             ORDER BY
-              3 DESC, 1
-          SQL
-        else
-          select_all <<-SQL
-            SELECT
-              schemaname AS schema,
-              relname AS table,
-              indexrelname AS index,
-              CASE WHEN idx_blks_hit + idx_blks_read = 0 THEN
-                0
-              ELSE
-                ROUND(1.0 * idx_blks_hit / (idx_blks_hit + idx_blks_read), 2)
-              END AS hit_rate
-            FROM
-              pg_statio_user_indexes
-            ORDER BY
-              3 DESC, 1
+              3 DESC, 1          
           SQL
         end
       end
 
       def index_usage
-        if citus_enabled?
+        if !citus_enabled?
+          select_all <<-SQL
+            SELECT
+              schemaname AS schema,
+              relname AS table,
+              CASE idx_scan
+                WHEN 0 THEN 'Insufficient data'
+                ELSE (100 * idx_scan / (seq_scan + idx_scan))::text
+              END percent_of_times_index_used,
+              n_live_tup AS estimated_rows
+            FROM
+              pg_stat_user_tables
+            ORDER BY
+              n_live_tup DESC,
+              relname ASC
+           SQL
+        else
           select_all <<-SQL
             WITH pg_dist_index_usage AS(
               WITH dist_tables_with_indexes (tablename) AS(
@@ -247,9 +263,13 @@ module PgHero
               pg_stat_user_tables 
             ORDER BY
               n_live_tup DESC,
-              relname ASC
+              relname ASC         
            SQL
-        else
+         end
+      end
+
+      def missing_indexes
+        if !citus_enabled?
           select_all <<-SQL
             SELECT
               schemaname AS schema,
@@ -261,15 +281,15 @@ module PgHero
               n_live_tup AS estimated_rows
             FROM
               pg_stat_user_tables
+            WHERE
+              idx_scan > 0
+              AND (100 * idx_scan / (seq_scan + idx_scan)) < 95
+              AND n_live_tup >= 10000
             ORDER BY
               n_live_tup DESC,
               relname ASC
            SQL
-         end
-      end
-
-      def missing_indexes
-        if citus_enabled?
+        else
           select_all <<-SQL
             WITH pg_dist_index_usage AS(
               WITH dist_tables_with_indexes (tablename) AS(
@@ -389,33 +409,32 @@ module PgHero
             )
             ORDER BY
               n_live_tup DESC,
-              relname ASC
-           SQL
-        else
-          select_all <<-SQL
-            SELECT
-              schemaname AS schema,
-              relname AS table,
-              CASE idx_scan
-                WHEN 0 THEN 'Insufficient data'
-                ELSE (100 * idx_scan / (seq_scan + idx_scan))::text
-              END percent_of_times_index_used,
-              n_live_tup AS estimated_rows
-            FROM
-              pg_stat_user_tables
-            WHERE
-              idx_scan > 0
-              AND (100 * idx_scan / (seq_scan + idx_scan)) < 95
-              AND n_live_tup >= 10000
-            ORDER BY
-              n_live_tup DESC,
-              relname ASC
+              relname ASC          
            SQL
          end
       end
 
       def unused_indexes(max_scans: 50, across: [])
-        if citus_enabled?
+        if !citus_enabled?
+          result = select_all_size <<-SQL
+            SELECT
+              schemaname AS schema,
+              relname AS table,
+              indexrelname AS index,
+              pg_relation_size(i.indexrelid) AS size_bytes,
+              idx_scan as index_scans
+            FROM
+              pg_stat_user_indexes ui
+            INNER JOIN
+              pg_index i ON ui.indexrelid = i.indexrelid
+            WHERE
+              NOT indisunique
+              AND idx_scan <= #{max_scans.to_i}
+            ORDER BY
+              pg_relation_size(i.indexrelid) DESC,
+              relname ASC
+          SQL
+        else
           result = select_all_size <<-SQL
             WITH indexes (idxname, tablename) AS(
               SELECT
@@ -533,26 +552,7 @@ module PgHero
               )
             ORDER BY
               size_bytes DESC,
-              relname ASC
-          SQL
-        else
-          result = select_all_size <<-SQL
-            SELECT
-              schemaname AS schema,
-              relname AS table,
-              indexrelname AS index,
-              pg_relation_size(i.indexrelid) AS size_bytes,
-              idx_scan as index_scans
-            FROM
-              pg_stat_user_indexes ui
-            INNER JOIN
-              pg_index i ON ui.indexrelid = i.indexrelid
-            WHERE
-              NOT indisunique
-              AND idx_scan <= #{max_scans.to_i}
-            ORDER BY
-              pg_relation_size(i.indexrelid) DESC,
-              relname ASC
+              relname ASC          
           SQL
         end
 
@@ -567,12 +567,12 @@ module PgHero
       end
 
       def reset_stats
-        if citus_enabled?
-          execute("SELECT pg_stat_reset() UNION ALL SELECT (run_command_on_workers($cmd$ SELECT pg_stat_reset() $cmd$)).result::void AS pg_stat_reset")
-          true
-        else
+        if !citus_enabled?
           execute("SELECT pg_stat_reset()")
           true
+        else
+          execute("SELECT pg_stat_reset() UNION ALL SELECT (run_command_on_workers($cmd$ SELECT pg_stat_reset() $cmd$)).result::void AS pg_stat_reset")
+          true          
         end
       end
 

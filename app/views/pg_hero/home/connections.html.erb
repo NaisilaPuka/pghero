@@ -29,22 +29,22 @@
     <% chart_count = 3 %>
     <% while x < @citus_nodesno %>
       <h2>Worker <%= x + 1 %></h2>
-      <p><%= pluralize(@worker_total_connections[x], "connection") %></p>
+      <p><%= pluralize(@citus_worker_total_connections[x], "connection") %></p>
       <h3>By Database</h3>
 
       <div id="chart-<%= chart_count %>" class="chart" style="height: 260px; line-height: 260px; margin-bottom: 20px;">Loading...</div>
       <script>
-        new Chartkick.PieChart("chart-<%= chart_count %>", <%= json_escape(@worker_connections_by_database[x].to_json).html_safe %>);
+        new Chartkick.PieChart("chart-<%= chart_count %>", <%= json_escape(@citus_worker_connections_by_database[x].to_json).html_safe %>);
       </script>
       <% chart_count = chart_count + 1 %>
       <h3>By User</h3>
 
       <div id="chart-<%=  chart_count %>" class="chart" style="height: 260px; line-height: 260px; margin-bottom: 20px;">Loading...</div>
       <script>
-        new Chartkick.PieChart("chart-<%= chart_count %>", <%= json_escape(@worker_connections_by_user[x].to_json).html_safe %>);
+        new Chartkick.PieChart("chart-<%= chart_count %>", <%= json_escape(@citus_worker_connections_by_user[x].to_json).html_safe %>);
       </script>
       <% chart_count = chart_count + 1 %>  
-      <%= render partial: "connections_table", locals: {connection_sources: @worker_connection_sources[x]} %>
+      <%= render partial: "connections_table", locals: {connection_sources: @citus_worker_connection_sources[x]} %>
       <% x = x + 1 %>
     <% end %>
   <% end %>

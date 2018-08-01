@@ -279,7 +279,7 @@ module PgHero
       @settings = @database.settings
       @citus_enabled = @database.citus_enabled?
       if @citus_enabled
-        @worker_settings = @database.worker_settings
+        @citus_worker_settings = @database.citus_worker_settings
       end
       @autovacuum_settings = @database.autovacuum_settings if params[:autovacuum]     
     end
@@ -293,15 +293,15 @@ module PgHero
       @citus_enabled = @database.citus_enabled?
       if @citus_enabled
         @citus_nodesno = @database.citus_nodesno
-        @worker_connection_sources = @database.worker_connection_sources(@citus_nodesno)
-        @worker_total_connections = @database.worker_total_connections(@citus_nodesno)
-        @worker_connections_by_database = Array.new(@citus_nodesno)
-        @worker_connections_by_user = Array.new(@citus_nodesno)
-        count_workers = 0
-        while count_workers < @citus_nodesno
-          @worker_connections_by_database[count_workers] = group_connections(@worker_connection_sources[count_workers], :database)
-          @worker_connections_by_user[count_workers] = group_connections(@worker_connection_sources[count_workers], :user)
-          count_workers = count_workers + 1
+        @citus_worker_connection_sources = @database.citus_worker_connection_sources(@citus_nodesno)
+        @citus_worker_total_connections = @database.citus_worker_total_connections(@citus_nodesno)
+        @citus_worker_connections_by_database = Array.new(@citus_nodesno)
+        @citus_worker_connections_by_user = Array.new(@citus_nodesno)
+        count_citus_workers = 0
+        while count_citus_workers < @citus_nodesno
+          @citus_worker_connections_by_database[count_citus_workers] = group_connections(@citus_worker_connection_sources[count_citus_workers], :database)
+          @citus_worker_connections_by_user[count_citus_workers] = group_connections(@citus_worker_connection_sources[count_citus_workers], :user)
+          count_citus_workers = count_citus_workers + 1
         end
       end    
     end

@@ -5,7 +5,7 @@ module PgHero
         select_one("SELECT COUNT(*) FROM pg_stat_activity")
       end
 
-      def worker_total_connections(nodesno)
+      def citus_worker_total_connections(nodesno)
         total = Array.new(nodesno)
         z = 0
         while z < nodesno
@@ -32,7 +32,7 @@ module PgHero
         SQL
       end
 
-      def worker_connection_sources(nodesno)
+      def citus_worker_connection_sources(nodesno)
         src = Array.new(nodesno)
         y = 0
         while y < nodesno

@@ -436,7 +436,7 @@ module PgHero
                       logicalrelid::name = tablename) = 0)
                 UNION
                   SELECT
-                  * 
+                    * 
                   FROM
                     pg_dist_stats) AS s 
             WHERE

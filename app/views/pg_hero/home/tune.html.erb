@@ -30,9 +30,9 @@
       </tr>
     </thead>
     <tbody>
-      <% @worker_settings.each do |worker_setting, value| %>
+      <% @citus_worker_settings.each do |citus_worker_setting, value| %>
         <tr>
-          <td><%= worker_setting %></td>
+          <td><%= citus_worker_setting %></td>
           <td><%= value %></td>
         </tr>
       <% end %>

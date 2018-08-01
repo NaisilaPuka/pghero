@@ -20,8 +20,8 @@ module PgHero
         fetch_settings(names)
       end
 
-      def worker_settings
-        worker_names =
+      def citus_worker_settings
+        citus_worker_names =
           if server_version_num >= 90500
             %i(
               max_connections shared_buffers effective_cache_size work_mem
@@ -35,7 +35,7 @@ module PgHero
               wal_buffers default_statistics_target
             )
           end
-        fetch_worker_settings(worker_names)
+        citus_fetch_worker_settings(citus_worker_names)
       end
          
       def autovacuum_settings
@@ -52,8 +52,8 @@ module PgHero
         Hash[names.map { |name| [name, select_one("SHOW #{name}")] }]
       end
 
-      def fetch_worker_settings(worker_names)
-        Hash[worker_names.map { |worker_name| [worker_name, select_one("SELECT result FROM run_command_on_workers($cmd$ SHOW #{worker_name} $cmd$) LIMIT 1")] }]
+      def citus_fetch_worker_settings(citus_worker_names)
+        Hash[worker_names.map { |citus_worker_name| [citus_worker_name, select_one("SELECT result FROM run_command_on_workers($cmd$ SHOW #{worker_name} $cmd$) LIMIT 1")] }]
       end
     end
   end
