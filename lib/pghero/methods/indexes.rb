@@ -1,49 +1,271 @@
 module PgHero
   module Methods
     module Indexes
+      include Citus
+
       def index_hit_rate
-        select_one <<-SQL
-          SELECT
-            (sum(idx_blks_hit)) / nullif(sum(idx_blks_hit + idx_blks_read), 0) AS rate
-          FROM
-            pg_statio_user_indexes
-        SQL
+        if !citus_enabled?
+          select_one <<-SQL
+            SELECT
+              (sum(idx_blks_hit)) / nullif(sum(idx_blks_hit + idx_blks_read), 0) AS rate
+            FROM
+              pg_statio_user_indexes
+          SQL
+        else
+          select_one <<-SQL
+            WITH worker_index_stats AS(
+              SELECT
+                result 
+              FROM
+                run_command_on_workers($cmd$ 
+                SELECT
+                  json_agg(row_to_json(d)) 
+                FROM
+                  (
+                    SELECT
+                      sum(idx_blks_hit) AS hit,
+                      nullif(sum(idx_blks_hit + idx_blks_read), 0) AS hit_and_read 
+                    FROM
+                      pg_statio_user_indexes 
+                  )
+                  d $cmd$) 
+            )
+            SELECT
+              SUM(hit) / SUM(hit_and_read) AS rate 
+            FROM
+              (
+                SELECT
+                  sum(idx_blks_hit) AS hit,
+                  nullif(sum(idx_blks_hit + idx_blks_read), 0) AS hit_and_read 
+                FROM
+                  pg_statio_user_indexes 
+                UNION ALL
+                SELECT
+                  x.hit,
+                  x.hit_and_read 
+                FROM
+                  worker_index_stats 
+                CROSS JOIN
+                  json_to_recordset(worker_index_stats.result::json) AS x("hit" int, "hit_and_read" int) 
+              )
+              AS cluster_index_table         
+          SQL
+        end
       end
 
       def index_caching
-        select_all <<-SQL
-          SELECT
-            schemaname AS schema,
-            relname AS table,
-            indexrelname AS index,
-            CASE WHEN idx_blks_hit + idx_blks_read = 0 THEN
-              0
-            ELSE
-              ROUND(1.0 * idx_blks_hit / (idx_blks_hit + idx_blks_read), 2)
-            END AS hit_rate
-          FROM
-            pg_statio_user_indexes
-          ORDER BY
-            3 DESC, 1
-        SQL
+        if !citus_enabled?
+          select_all <<-SQL
+            SELECT
+              schemaname AS schema,
+              relname AS table,
+              indexrelname AS index,
+              CASE WHEN idx_blks_hit + idx_blks_read = 0 THEN
+                0
+              ELSE
+                ROUND(1.0 * idx_blks_hit / (idx_blks_hit + idx_blks_read), 2)
+              END AS hit_rate
+            FROM
+              pg_statio_user_indexes
+            ORDER BY
+              3 DESC, 1
+          SQL
+        else
+          select_all <<-SQL
+            WITH pg_dist_index_caching AS(
+              WITH indices (idxname, tablename) AS(
+                SELECT
+                  indexrelid,
+                  indrelid 
+                FROM
+                  pg_index 
+                JOIN
+                pg_dist_partition ON (indrelid = logicalrelid) 
+              ),
+              dist_indices AS(
+                SELECT
+                  idxname::regclass,
+                  (run_command_on_placements(tablename::regclass, $$ 
+                    SELECT
+                      idx_blks_hit AS hit 
+                    FROM
+                      pg_statio_user_indexes 
+                    WHERE
+                      indexrelname = '$$ || idxname::regclass::text || $$' || replace('%s', '$$ || tablename::regclass::text || $$', '') $$ )).result AS hit,
+                  (run_command_on_placements(tablename::regclass, $$ 
+                    SELECT
+                      idx_blks_hit + idx_blks_read AS hit_and_read 
+                    FROM
+                      pg_statio_user_indexes 
+                    WHERE
+                      indexrelname = '$$ || idxname::regclass::text || $$' || replace('%s', '$$ || tablename::regclass::text || $$', '') $$ )).result AS hit_and_read 
+                FROM
+                  indices 
+              )
+              SELECT
+                idxname,
+                CASE WHEN sum(hit_and_read::decimal) = 0 THEN
+                    0 
+                  ELSE
+                    ROUND(1.0 * sum(hit::decimal) / sum(hit_and_read::decimal), 2) 
+                END AS hit_rate 
+              FROM
+                dist_indices 
+              GROUP BY
+                idxname 
+              ORDER BY
+                idxname 
+            )
+            SELECT
+              schemaname AS SCHEMA,
+              relname AS TABLE,
+              indexrelname AS INDEX,
+              CASE WHEN (( 
+                    SELECT
+                      count(*) 
+                    FROM
+                      pg_dist_index_caching 
+                    WHERE
+                      idxname::NAME = indexrelname) > 0)
+                THEN ( 
+                  SELECT
+                    hit_rate 
+                  FROM
+                    pg_dist_index_caching 
+                  WHERE
+                    idxname::NAME = indexrelname LIMIT 1) 
+                ELSE
+                  CASE WHEN idx_blks_hit + idx_blks_read = 0 THEN
+                    0 
+                  ELSE
+                    ROUND(1.0 * idx_blks_hit / (idx_blks_hit + idx_blks_read), 2) 
+                  END
+              END AS hit_rate 
+            FROM
+              pg_statio_user_indexes 
+            ORDER BY
+              3 DESC, 1          
+          SQL
+        end
       end
 
       def index_usage
-        select_all <<-SQL
-          SELECT
-            schemaname AS schema,
-            relname AS table,
-            CASE idx_scan
-              WHEN 0 THEN 'Insufficient data'
-              ELSE (100 * idx_scan / (seq_scan + idx_scan))::text
-            END percent_of_times_index_used,
-            n_live_tup AS estimated_rows
-          FROM
-            pg_stat_user_tables
-          ORDER BY
-            n_live_tup DESC,
-            relname ASC
-         SQL
+        if !citus_enabled?
+          select_all <<-SQL
+            SELECT
+              schemaname AS schema,
+              relname AS table,
+              CASE idx_scan
+                WHEN 0 THEN 'Insufficient data'
+                ELSE (100 * idx_scan / (seq_scan + idx_scan))::text
+              END percent_of_times_index_used,
+              n_live_tup AS estimated_rows
+            FROM
+              pg_stat_user_tables
+            ORDER BY
+              n_live_tup DESC,
+              relname ASC
+           SQL
+        else
+          select_all <<-SQL
+            WITH pg_dist_index_usage AS(
+              WITH dist_tables_with_indexes (tablename) AS(
+                SELECT
+                  indrelid 
+                FROM
+                  pg_index 
+                JOIN
+                  pg_dist_partition ON ( indrelid = logicalrelid) 
+              ),
+              dist_indexes AS(
+                SELECT
+                  tablename::regclass,
+                  (run_command_on_placements(tablename::regclass, $$ 
+                    SELECT
+                      idx_scan 
+                    FROM
+                      pg_stat_user_tables 
+                    WHERE
+                      relname = '%s' $$ )).result AS idx_scan,
+                  (run_command_on_placements(tablename::regclass, $$ 
+                    SELECT
+                      seq_scan + idx_scan AS idx_and_seq_scan 
+                    FROM
+                      pg_stat_user_tables 
+                    WHERE
+                      relname = '%s' $$ )).result AS idx_and_seq_scan,
+                  (run_command_on_placements(tablename::regclass, $$ 
+                    SELECT
+                      n_live_tup 
+                    FROM
+                      pg_stat_user_tables 
+                    WHERE
+                      relname = '%s' $$ )).result AS n_live_tup 
+                FROM
+                  dist_tables_with_indexes 
+              )
+              SELECT
+                tablename,
+                CASE sum(idx_scan::int) WHEN 0 THEN
+                  'Insufficient data' 
+                ELSE
+                  (100 * sum(idx_scan::int) / (sum(idx_and_seq_scan::int)))::text 
+                END AS percent_of_times_index_used, 
+                sum(n_live_tup::int) AS n_live_tup 
+              FROM
+                dist_indexes 
+              GROUP BY
+                tablename 
+              ORDER BY
+                tablename 
+            )
+            SELECT
+              schemaname AS schema,
+              relname AS table,
+              CASE WHEN (( 
+                  SELECT
+                    count(*) 
+                  FROM
+                    pg_dist_index_usage 
+                  WHERE
+                    tablename::name = relname) > 0)
+                THEN ( 
+                  SELECT
+                    percent_of_times_index_used 
+                  FROM
+                    pg_dist_index_usage 
+                  WHERE
+                    tablename::name = relname) 
+                ELSE
+                  CASE idx_scan 
+                    WHEN 0 THEN 'Insufficient data' 
+                    ELSE (100 * idx_scan / (seq_scan + idx_scan))::text 
+                  END
+              END AS percent_of_times_index_used, 
+              CASE WHEN (( 
+                    SELECT
+                      count(*) 
+                    FROM
+                      pg_dist_index_usage 
+                    WHERE
+                      tablename::name = relname) > 0)
+                THEN ( 
+                  SELECT
+                    n_live_tup 
+                  FROM
+                    pg_dist_index_usage 
+                  WHERE
+                    tablename::name = relname) 
+                ELSE
+                    n_live_tup 
+              END AS estimated_rows 
+            FROM
+              pg_stat_user_tables 
+            ORDER BY
+              n_live_tup DESC,
+              relname ASC         
+           SQL
+         end
       end
 
       def missing_indexes
