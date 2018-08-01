@@ -1,6 +1,8 @@
 module PgHero
   module Methods
     module SuggestedIndexes
+      include Citus
+
       def suggested_indexes_enabled?
         defined?(PgQuery) && Gem::Version.new(PgQuery::VERSION) >= Gem::Version.new("0.9.0") && query_stats_enabled?
       end
@@ -296,21 +298,154 @@ module PgHero
       end
 
       def column_stats(schema: nil, table: nil)
-        select_all <<-SQL
-          SELECT
-            schemaname AS schema,
-            tablename AS table,
-            attname AS column,
-            null_frac,
-            n_distinct
-          FROM
-            pg_stats
-          WHERE
-            schemaname = #{quote(schema)}
-            #{table ? "AND tablename IN (#{Array(table).map { |t| quote(t) }.join(", ")})" : ""}
-          ORDER BY
-            1, 2, 3
-        SQL
+        if !citus_enabled?
+          select_all <<-SQL
+            SELECT
+              schemaname AS schema,
+              tablename AS table,
+              attname AS column,
+              null_frac,
+              n_distinct
+            FROM
+              pg_stats
+            WHERE
+              schemaname = #{quote(schema)}
+              #{table ? "AND tablename IN (#{Array(table).map { |t| quote(t) }.join(", ")})" : ""}
+            ORDER BY
+              1, 2, 3
+          SQL
+        else
+          select_all <<-SQL
+            WITH pg_dist_stats_double_json AS(
+              SELECT ( 
+                SELECT
+                  json_agg(row_to_json(f)) 
+                FROM
+                  (
+                    SELECT
+                      result 
+                    FROM
+                      run_command_on_placements(logicalrelid, $$ 
+                      SELECT
+                        json_agg(row_to_json(d)) 
+                      FROM ((
+                        SELECT
+                          '$$ || logicalrelid || $$' AS tablename, 
+                          attname, 
+                          null_frac, 
+                          reltuples, 
+                          n_distinct 
+                        FROM
+                          pg_stats 
+                        JOIN
+                          pg_class ON tablename = relname 
+                        JOIN
+                          pg_namespace n ON n.oid = relnamespace 
+                        WHERE
+                          tablename = '%s' ) 
+                        UNION ALL(
+                        SELECT
+                            'backup' AS tablename, 'backup' AS attname, 0.00 AS null_frac, 1 AS reltuples, 0.00 AS n_distinct) 
+                        ) d $$)) f) 
+              FROM
+                pg_dist_partition 
+            ),
+            pg_dist_stats_single_json AS (
+              SELECT
+                x.result 
+              FROM
+                pg_dist_stats_double_json 
+              CROSS JOIN
+                json_to_recordset(pg_dist_stats_double_json.json_agg) AS x("result" text) 
+            ),
+            pg_dist_stats_regular AS 
+            (
+              SELECT
+                y.tablename,
+                y.attname,
+                y.null_frac,
+                y.reltuples 
+              FROM
+                pg_dist_stats_single_json 
+              CROSS JOIN
+                json_to_recordset(pg_dist_stats_single_json.result::json) AS y("tablename" name, "attname" name, "null_frac" REAL, "reltuples" INTEGER) 
+            ),
+            pg_dist_stats AS (
+              SELECT
+                n.nspname AS schemaname,
+                tablename,
+                attname,
+                (sum(null_frac * t.reltuples)) / (sum(t.reltuples)) AS null_frac,
+                1 AS n_distinct 
+              FROM
+                pg_dist_stats_regular t 
+              JOIN
+                pg_class ON relname = tablename 
+              JOIN
+                pg_namespace n ON n.oid = relnamespace 
+              GROUP BY
+                n.nspname,
+                tablename,
+                attname 
+              ORDER BY
+                tablename,
+                attname ASC 
+            )
+            SELECT
+              schemaname AS schema,
+              s.tablename AS table,
+              s.attname AS column,
+              null_frac,
+              CASE WHEN ((
+                    SELECT
+                      count(*) 
+                    FROM
+                      pg_dist_stats ds 
+                    WHERE
+                      ds.tablename = s.tablename) > 0)
+                THEN (
+                  SELECT
+                    z.n_distinct 
+                  FROM
+                    pg_dist_stats_single_json 
+                  CROSS JOIN
+                    json_to_recordset(pg_dist_stats_single_json.result::json) AS z("tablename" name, "attname" name, "n_distinct" real) 
+                  WHERE
+                    z.tablename = s.tablename AND z.attname = s.attname 
+                  LIMIT 1) 
+                ELSE
+                  s.n_distinct 
+              END AS n_distinct 
+            FROM 
+              (
+                SELECT
+                  schemaname,
+                  tablename,
+                  attname,
+                  null_frac,
+                  n_distinct 
+                FROM
+                  pg_stats 
+                 WHERE(
+                  ( 
+                    SELECT
+                      count(*) 
+                    FROM
+                      pg_dist_partition 
+                    WHERE
+                      logicalrelid::name = tablename) = 0)
+                UNION
+                  SELECT
+                  * 
+                  FROM
+                    pg_dist_stats) AS s 
+            WHERE
+              schemaname = #{quote(schema)}
+              #{table ? "AND tablename IN (#{Array(table).map { |t| quote(t) }.join(", ")})" : ""} 
+            ORDER BY
+              1, 2, 3
+          SQL
+        end
       end
     end
   end
