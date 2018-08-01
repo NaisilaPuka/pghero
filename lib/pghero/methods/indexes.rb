@@ -1120,11 +1120,11 @@ module PgHero
                         logicalrelid::oid = sub.table_oid) > 0)
                   THEN ( 
                     SELECT
-                      CEILING((idx_scan::decimal) / (COUNT::decimal)) 
+                      CEILING((idx_scan::decimal) / (count::decimal)) 
                     FROM
                       pg_dist_index_scan 
                     WHERE
-                      idxname::NAME = index_name) 
+                      idxname::name = index_name) 
                   ELSE
                     stat.idx_scan 
                 END AS index_scans,
