@@ -659,140 +659,502 @@ module PgHero
       # thanks @jberkus and @mbanck
       def index_bloat(min_size: nil)
         min_size ||= index_bloat_bytes
-        select_all <<-SQL
-          WITH btree_index_atts AS (
+        if !citus_enabled?
+          select_all <<-SQL
+            WITH btree_index_atts AS (
+              SELECT
+                nspname, relname, reltuples, relpages, indrelid, relam,
+                regexp_split_to_table(indkey::text, ' ')::smallint AS attnum,
+                indexrelid as index_oid
+              FROM
+                pg_index
+              JOIN
+                pg_class ON pg_class.oid=pg_index.indexrelid
+              JOIN
+                pg_namespace ON pg_namespace.oid = pg_class.relnamespace
+              JOIN
+                pg_am ON pg_class.relam = pg_am.oid
+              WHERE
+                pg_am.amname = 'btree'
+            ),
+            index_item_sizes AS (
+              SELECT
+                i.nspname,
+                i.relname,
+                i.reltuples,
+                i.relpages,
+                i.relam,
+                (quote_ident(s.schemaname) || '.' || quote_ident(s.tablename))::regclass AS starelid,
+                a.attrelid AS table_oid, index_oid,
+                current_setting('block_size')::numeric AS bs,
+                /* MAXALIGN: 4 on 32bits, 8 on 64bits (and mingw32 ?) */
+                CASE
+                  WHEN version() ~ 'mingw32' OR version() ~ '64-bit' THEN 8
+                  ELSE 4
+                END AS maxalign,
+                24 AS pagehdr,
+                /* per tuple header: add index_attribute_bm if some cols are null-able */
+                CASE WHEN max(coalesce(s.null_frac,0)) = 0
+                  THEN 2
+                  ELSE 6
+                END AS index_tuple_hdr,
+                /* data len: we remove null values save space using it fractionnal part from stats */
+                sum( (1-coalesce(s.null_frac, 0)) * coalesce(s.avg_width, 2048) ) AS nulldatawidth
+              FROM
+                pg_attribute AS a
+              JOIN
+                pg_stats AS s ON (quote_ident(s.schemaname) || '.' || quote_ident(s.tablename))::regclass=a.attrelid AND s.attname = a.attname
+              JOIN
+                btree_index_atts AS i ON i.indrelid = a.attrelid AND a.attnum = i.attnum
+              WHERE
+                a.attnum > 0
+              GROUP BY
+                1, 2, 3, 4, 5, 6, 7, 8, 9
+            ),
+            index_aligned AS (
+              SELECT
+                maxalign,
+                bs,
+                nspname,
+                relname AS index_name,
+                reltuples,
+                relpages,
+                relam,
+                table_oid,
+                index_oid,
+                ( 2 +
+                  maxalign - CASE /* Add padding to the index tuple header to align on MAXALIGN */
+                    WHEN index_tuple_hdr%maxalign = 0 THEN maxalign
+                    ELSE index_tuple_hdr%maxalign
+                  END
+                + nulldatawidth + maxalign - CASE /* Add padding to the data to align on MAXALIGN */
+                    WHEN nulldatawidth::integer%maxalign = 0 THEN maxalign
+                    ELSE nulldatawidth::integer%maxalign
+                  END
+                )::numeric AS nulldatahdrwidth, pagehdr
+              FROM
+                index_item_sizes AS s1
+            ),
+            otta_calc AS (
+              SELECT
+                bs,
+                nspname,
+                table_oid,
+                index_oid,
+                index_name,
+                relpages,
+                coalesce(
+                  ceil((reltuples*(4+nulldatahdrwidth))/(bs-pagehdr::float)) +
+                  CASE WHEN am.amname IN ('hash','btree') THEN 1 ELSE 0 END , 0 /* btree and hash have a metadata reserved block */
+                ) AS otta
+              FROM
+                index_aligned AS s2
+              LEFT JOIN
+                pg_am am ON s2.relam = am.oid
+            ),
+            raw_bloat AS (
+              SELECT
+                nspname,
+                c.relname AS table_name,
+                index_name,
+                bs*(sub.relpages)::bigint AS totalbytes,
+                CASE
+                  WHEN sub.relpages <= otta THEN 0
+                  ELSE bs*(sub.relpages-otta)::bigint END
+                  AS wastedbytes,
+                CASE
+                  WHEN sub.relpages <= otta
+                  THEN 0 ELSE bs*(sub.relpages-otta)::bigint * 100 / (bs*(sub.relpages)::bigint) END
+                  AS realbloat,
+                pg_relation_size(sub.table_oid) as table_bytes,
+                stat.idx_scan as index_scans,
+                stat.indexrelid
+              FROM
+                otta_calc AS sub
+              JOIN
+                pg_class AS c ON c.oid=sub.table_oid
+              JOIN
+                pg_stat_user_indexes AS stat ON sub.index_oid = stat.indexrelid
+            )
             SELECT
-              nspname, relname, reltuples, relpages, indrelid, relam,
-              regexp_split_to_table(indkey::text, ' ')::smallint AS attnum,
-              indexrelid as index_oid
+              nspname AS schema,
+              table_name AS table,
+              index_name AS index,
+              wastedbytes AS bloat_bytes,
+              totalbytes AS index_bytes,
+              pg_get_indexdef(rb.indexrelid) AS definition,
+              indisprimary AS primary
             FROM
-              pg_index
-            JOIN
-              pg_class ON pg_class.oid=pg_index.indexrelid
-            JOIN
-              pg_namespace ON pg_namespace.oid = pg_class.relnamespace
-            JOIN
-              pg_am ON pg_class.relam = pg_am.oid
+              raw_bloat rb
+            INNER JOIN
+              pg_index i ON i.indexrelid = rb.indexrelid
             WHERE
-              pg_am.amname = 'btree'
-          ),
-          index_item_sizes AS (
+              wastedbytes >= #{min_size.to_i}
+            ORDER BY
+              wastedbytes DESC,
+              index_name
+          SQL
+        else
+          select_all <<-SQL
+            WITH indexes (idxname,tablename ) AS(
+              SELECT
+                indexrelid,
+                indrelid 
+              FROM
+                pg_index 
+              JOIN
+                pg_dist_partition ON ( indrelid = logicalrelid) 
+            ),
+            pg_dist_index_reltuples AS(
+              SELECT
+                idxname::regclass,
+                (run_command_on_placements(tablename::regclass, $$ 
+                  SELECT
+                    reltuples 
+                  FROM
+                    pg_class 
+                  WHERE
+                    relname = '$$ || idxname::regclass::text || $$' || replace('%s', '$$ || tablename::regclass::text || $$', '') $$ )).result AS reltuples,
+                (run_command_on_placements(tablename::regclass, $$ 
+                  SELECT
+                    relpages 
+                  FROM
+                    pg_class 
+                  WHERE
+                    relname = '$$ || idxname::regclass::text || $$' || replace('%s', '$$ || tablename::regclass::text || $$', '') $$ )).result AS relpages 
+              FROM
+                indexes 
+            ),
+            pg_dist_index_reltuples_relpages AS 
+            (
+              SELECT
+                idxname,
+                sum(reltuples::int) AS reltuples,
+                sum(relpages::int) AS relpages 
+              FROM
+                pg_dist_index_reltuples 
+              GROUP BY
+                idxname 
+              ORDER BY
+                idxname ASC 
+            ),
+            btree_index_atts AS 
+            (
+              SELECT
+                nspname,
+                relname,
+                CASE WHEN (( 
+                      SELECT
+                        count(*) 
+                      FROM
+                        pg_dist_index_reltuples_relpages 
+                      WHERE
+                        idxname::name = relname) > 0)
+                  THEN ( 
+                    SELECT
+                      reltuples 
+                    FROM
+                      pg_dist_index_reltuples_relpages 
+                    WHERE
+                      idxname::name = relname LIMIT 1) 
+                  ELSE
+                    reltuples 
+                END AS reltuples,
+                CASE WHEN (( 
+                      SELECT
+                        count(*) 
+                      FROM
+                        pg_dist_index_reltuples_relpages 
+                      WHERE
+                        idxname::name = relname) > 0)
+                  THEN ( 
+                    SELECT
+                      relpages 
+                    FROM
+                      pg_dist_index_reltuples_relpages 
+                    WHERE
+                      idxname::name = relname LIMIT 1) 
+                  ELSE
+                    relpages 
+                END AS relpages,
+                indrelid,
+                relam,
+                regexp_split_to_table(indkey::text, ' ')::smallint AS attnum,
+                indexrelid AS index_oid 
+              FROM
+                pg_index 
+              JOIN
+                pg_class ON pg_class.oid = pg_index.indexrelid 
+              JOIN
+                pg_namespace ON pg_namespace.oid = pg_class.relnamespace 
+              JOIN
+                pg_am ON pg_class.relam = pg_am.oid 
+              WHERE
+                pg_am.amname = 'btree' 
+            ),
+            pg_dist_stats_regular AS(
+              WITH pg_dist_stats_double_json AS(
+                SELECT( 
+                  SELECT
+                    json_agg(row_to_json(f)) 
+                  FROM(
+                    SELECT
+                      result 
+                    FROM
+                      run_command_on_placements(logicalrelid, $$ 
+                        SELECT
+                          json_agg(row_to_json(d)) 
+                        FROM(
+                          (
+                            SELECT
+                              '$$ || logicalrelid || $$' AS tablename, attname, null_frac, reltuples, avg_width 
+                            FROM
+                              pg_stats 
+                            JOIN
+                              pg_class ON tablename = relname 
+                            JOIN
+                              pg_namespace n ON n.oid = relnamespace 
+                            WHERE
+                              tablename = '%s' ) 
+                            UNION ALL (
+                            SELECT
+                              'backup' AS tablename, 'backup' AS attname, 0.00 AS null_frac, 1 AS reltuples, 0 AS avg_width) 
+                          )
+                          d $$)) f) 
+                FROM
+                  pg_dist_partition 
+              ),
+              pg_dist_stats_single_json AS 
+              (
+                SELECT
+                  x.result 
+                FROM
+                  pg_dist_stats_double_json 
+                CROSS JOIN
+                  json_to_recordset(pg_dist_stats_double_json.json_agg) AS x("result" text) 
+              )
+              SELECT
+                y.tablename,
+                y.attname,
+                y.null_frac,
+                y.reltuples,
+                y.avg_width 
+              FROM
+                pg_dist_stats_single_json 
+              CROSS JOIN
+                json_to_recordset(pg_dist_stats_single_json.result::json) AS y("tablename" name, "attname" name, "null_frac" real, "reltuples" integer, "avg_width" integer) 
+            ),
+            pg_dist_stats AS(
+              SELECT
+                n.nspname AS schemaname,
+                tablename,
+                attname,
+                (sum(null_frac * t.reltuples)) / (sum(t.reltuples)) AS null_frac,
+                (sum(avg_width * t.reltuples)) / (sum(t.reltuples)) AS avg_width 
+              FROM
+                pg_dist_stats_regular t 
+              JOIN
+                pg_class ON relname = tablename 
+              JOIN
+                pg_namespace n ON n.oid = relnamespace 
+              GROUP BY
+                n.nspname,
+                tablename,
+                attname 
+              ORDER BY
+                attname ASC 
+            ),
+            index_item_sizes AS 
+            (
+              SELECT
+                i.nspname,
+                i.relname,
+                i.reltuples,
+                i.relpages,
+                i.relam,
+                (quote_ident(s.schemaname) || '.' || quote_ident(s.tablename))::regclass AS starelid,
+                a.attrelid AS table_oid,
+                index_oid,
+                current_setting('block_size')::numeric AS bs,
+                /* MAXALIGN: 4 on 32bits, 8 on 64bits (and mingw32 ?) */
+                CASE
+                  WHEN version() ~ 'mingw32' OR version() ~ '64-bit' THEN 8
+                  ELSE 4
+                END AS maxalign,
+                24 AS pagehdr,
+                /* per tuple header: add index_attribute_bm if some cols are null-able */
+                CASE WHEN max(coalesce(s.null_frac,0)) = 0
+                  THEN 2
+                  ELSE 6
+                END AS index_tuple_hdr,
+                /* data len: we remove null values save space using it fractionnal part from stats */
+                sum( (1-coalesce(s.null_frac, 0)) * coalesce(s.avg_width, 2048) ) AS nulldatawidth
+              FROM
+                pg_attribute AS a 
+                JOIN
+                  (
+                    SELECT
+                      schemaname,
+                      tablename,
+                      attname,
+                      null_frac,
+                      avg_width 
+                    FROM
+                      pg_stats 
+                    WHERE
+                      ((SELECT count(*) FROM pg_dist_partition WHERE logicalrelid::name = tablename) = 0)
+                    UNION
+                    SELECT
+                      * 
+                    FROM
+                      pg_dist_stats 
+                  ) AS s ON (quote_ident(s.schemaname) || '.' || quote_ident(s.tablename))::regclass = a.attrelid AND s.attname = a.attname 
+                JOIN
+                  btree_index_atts AS i ON i.indrelid = a.attrelid AND a.attnum = i.attnum 
+              WHERE
+                a.attnum > 0 
+              GROUP BY
+                1, 2, 3, 4, 5, 6, 7, 8, 9
+            ),
+            index_aligned AS (
+              SELECT
+                maxalign,
+                bs,
+                nspname,
+                relname AS index_name,
+                reltuples,
+                relpages,
+                relam,
+                table_oid,
+                index_oid,
+                ( 2 +
+                  maxalign - CASE /* Add padding to the index tuple header to align on MAXALIGN */
+                    WHEN index_tuple_hdr%maxalign = 0 THEN maxalign
+                    ELSE index_tuple_hdr%maxalign
+                  END
+                + nulldatawidth + maxalign - CASE /* Add padding to the data to align on MAXALIGN */
+                    WHEN nulldatawidth::integer%maxalign = 0 THEN maxalign
+                    ELSE nulldatawidth::integer%maxalign
+                  END
+                )::numeric AS nulldatahdrwidth, pagehdr
+              FROM
+                index_item_sizes AS s1
+            ),
+            otta_calc AS (
+              SELECT
+                bs,
+                nspname,
+                table_oid,
+                index_oid,
+                index_name,
+                relpages,
+                coalesce(
+                  ceil((reltuples*(4+nulldatahdrwidth))/(bs-pagehdr::float)) +
+                  CASE WHEN am.amname IN ('hash','btree') THEN 1 ELSE 0 END , 0 /* btree and hash have a metadata reserved block */
+                ) AS otta
+              FROM
+                index_aligned AS s2
+              LEFT JOIN
+                pg_am am ON s2.relam = am.oid
+            ),
+            pg_dist_stat_user_indexes AS 
+            (
+              SELECT
+                idxname::regclass,
+                1 AS count,
+                (run_command_on_placements(tablename::regclass, $$ 
+                  SELECT
+                    idx_scan 
+                  FROM
+                    pg_stat_user_indexes 
+                  WHERE
+                    indexrelname = '$$ || idxname::regclass::text || $$' || replace('%s', '$$ || tablename::regclass::text || $$', '') $$ )).result AS idx_scan 
+              FROM
+                indexes 
+            ),
+            pg_dist_index_scan AS 
+            (
+              SELECT
+                idxname,
+                sum(idx_scan::int) AS idx_scan,
+                sum(count) AS count 
+              FROM
+                pg_dist_stat_user_indexes 
+              GROUP BY
+                idxname 
+              ORDER BY
+                idxname ASC 
+            ),
+            raw_bloat AS(
+              SELECT
+                nspname,
+                c.relname AS table_name,
+                index_name,
+                bs*(sub.relpages)::bigint AS totalbytes,
+                CASE
+                  WHEN sub.relpages <= otta THEN 0
+                  ELSE bs*(sub.relpages-otta)::bigint END
+                  AS wastedbytes,
+                CASE
+                  WHEN sub.relpages <= otta
+                  THEN 0 ELSE bs*(sub.relpages-otta)::bigint * 100 / (bs*(sub.relpages)::bigint) END
+                  AS realbloat,
+                CASE WHEN (( 
+                      SELECT
+                        count(*) 
+                      FROM
+                        pg_dist_partition 
+                      WHERE
+                        logicalrelid::oid = sub.table_oid) > 0)
+                  THEN
+                    citus_relation_size(sub.table_oid) 
+                  ELSE
+                    pg_relation_size(sub.table_oid) 
+                END AS table_bytes, 
+                CASE WHEN (( 
+                      SELECT
+                        count(*) 
+                      FROM
+                        pg_dist_partition 
+                      WHERE
+                        logicalrelid::oid = sub.table_oid) > 0)
+                  THEN ( 
+                    SELECT
+                      CEILING((idx_scan::decimal) / (COUNT::decimal)) 
+                    FROM
+                      pg_dist_index_scan 
+                    WHERE
+                      idxname::NAME = index_name) 
+                  ELSE
+                    stat.idx_scan 
+                END AS index_scans,
+                stat.indexrelid 
+              FROM
+                otta_calc AS sub
+              JOIN
+                pg_class AS c ON c.oid=sub.table_oid
+              JOIN
+                pg_stat_user_indexes AS stat ON sub.index_oid = stat.indexrelid
+            )
             SELECT
-              i.nspname,
-              i.relname,
-              i.reltuples,
-              i.relpages,
-              i.relam,
-              (quote_ident(s.schemaname) || '.' || quote_ident(s.tablename))::regclass AS starelid,
-              a.attrelid AS table_oid, index_oid,
-              current_setting('block_size')::numeric AS bs,
-              /* MAXALIGN: 4 on 32bits, 8 on 64bits (and mingw32 ?) */
-              CASE
-                WHEN version() ~ 'mingw32' OR version() ~ '64-bit' THEN 8
-                ELSE 4
-              END AS maxalign,
-              24 AS pagehdr,
-              /* per tuple header: add index_attribute_bm if some cols are null-able */
-              CASE WHEN max(coalesce(s.null_frac,0)) = 0
-                THEN 2
-                ELSE 6
-              END AS index_tuple_hdr,
-              /* data len: we remove null values save space using it fractionnal part from stats */
-              sum( (1-coalesce(s.null_frac, 0)) * coalesce(s.avg_width, 2048) ) AS nulldatawidth
+              nspname AS schema,
+              table_name AS table,
+              index_name AS index,
+              wastedbytes AS bloat_bytes,
+              totalbytes AS index_bytes,
+              pg_get_indexdef(rb.indexrelid) AS definition,
+              indisprimary AS primary
             FROM
-              pg_attribute AS a
-            JOIN
-              pg_stats AS s ON (quote_ident(s.schemaname) || '.' || quote_ident(s.tablename))::regclass=a.attrelid AND s.attname = a.attname
-            JOIN
-              btree_index_atts AS i ON i.indrelid = a.attrelid AND a.attnum = i.attnum
+              raw_bloat rb
+            INNER JOIN
+              pg_index i ON i.indexrelid = rb.indexrelid
             WHERE
-              a.attnum > 0
-            GROUP BY
-              1, 2, 3, 4, 5, 6, 7, 8, 9
-          ),
-          index_aligned AS (
-            SELECT
-              maxalign,
-              bs,
-              nspname,
-              relname AS index_name,
-              reltuples,
-              relpages,
-              relam,
-              table_oid,
-              index_oid,
-              ( 2 +
-                maxalign - CASE /* Add padding to the index tuple header to align on MAXALIGN */
-                  WHEN index_tuple_hdr%maxalign = 0 THEN maxalign
-                  ELSE index_tuple_hdr%maxalign
-                END
-              + nulldatawidth + maxalign - CASE /* Add padding to the data to align on MAXALIGN */
-                  WHEN nulldatawidth::integer%maxalign = 0 THEN maxalign
-                  ELSE nulldatawidth::integer%maxalign
-                END
-              )::numeric AS nulldatahdrwidth, pagehdr
-            FROM
-              index_item_sizes AS s1
-          ),
-          otta_calc AS (
-            SELECT
-              bs,
-              nspname,
-              table_oid,
-              index_oid,
-              index_name,
-              relpages,
-              coalesce(
-                ceil((reltuples*(4+nulldatahdrwidth))/(bs-pagehdr::float)) +
-                CASE WHEN am.amname IN ('hash','btree') THEN 1 ELSE 0 END , 0 /* btree and hash have a metadata reserved block */
-              ) AS otta
-            FROM
-              index_aligned AS s2
-            LEFT JOIN
-              pg_am am ON s2.relam = am.oid
-          ),
-          raw_bloat AS (
-            SELECT
-              nspname,
-              c.relname AS table_name,
-              index_name,
-              bs*(sub.relpages)::bigint AS totalbytes,
-              CASE
-                WHEN sub.relpages <= otta THEN 0
-                ELSE bs*(sub.relpages-otta)::bigint END
-                AS wastedbytes,
-              CASE
-                WHEN sub.relpages <= otta
-                THEN 0 ELSE bs*(sub.relpages-otta)::bigint * 100 / (bs*(sub.relpages)::bigint) END
-                AS realbloat,
-              pg_relation_size(sub.table_oid) as table_bytes,
-              stat.idx_scan as index_scans,
-              stat.indexrelid
-            FROM
-              otta_calc AS sub
-            JOIN
-              pg_class AS c ON c.oid=sub.table_oid
-            JOIN
-              pg_stat_user_indexes AS stat ON sub.index_oid = stat.indexrelid
-          )
-          SELECT
-            nspname AS schema,
-            table_name AS table,
-            index_name AS index,
-            wastedbytes AS bloat_bytes,
-            totalbytes AS index_bytes,
-            pg_get_indexdef(rb.indexrelid) AS definition,
-            indisprimary AS primary
-          FROM
-            raw_bloat rb
-          INNER JOIN
-            pg_index i ON i.indexrelid = rb.indexrelid
-          WHERE
-            wastedbytes >= #{min_size.to_i}
-          ORDER BY
-            wastedbytes DESC,
-            index_name
-        SQL
+              wastedbytes >= #{min_size.to_i}
+            ORDER BY
+              wastedbytes DESC,
+              index_name
+          SQL
+        end
       end
     end
   end
