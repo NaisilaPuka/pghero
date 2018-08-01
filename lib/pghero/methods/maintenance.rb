@@ -246,15 +246,6 @@ module PgHero
           stats[:success] = success
         end
       end
-
-      def maintenance_info
-        if citus_enabled?
-          select_all <<-SQL
-          SQL
-        else
-          select_all <<-SQL
-          SQL
-        end
     end
   end
 end
