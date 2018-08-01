@@ -53,7 +53,7 @@ module PgHero
       end
 
       def citus_fetch_worker_settings(citus_worker_names)
-        Hash[citus_worker_names.map { |citus_worker_name| [citus_worker_name, select_one("SELECT result FROM run_command_on_workers($cmd$ SHOW #{worker_name} $cmd$) LIMIT 1")] }]
+        Hash[citus_worker_names.map { |citus_worker_name| [citus_worker_name, select_one("SELECT result FROM run_command_on_workers($cmd$ SHOW #{citus_worker_name} $cmd$) LIMIT 1")] }]
       end
     end
   end
