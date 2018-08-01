@@ -1,6 +1,7 @@
 module PgHero
   module Methods
     module Maintenance
+      include Citus
       # https://www.postgresql.org/docs/9.1/static/routine-vacuuming.html#VACUUM-FOR-WRAPAROUND
       # "the system will shut down and refuse to start any new transactions
       # once there are fewer than 1 million transactions left until wraparound"
@@ -50,19 +51,196 @@ module PgHero
       end
 
       def maintenance_info
-        select_all <<-SQL
-          SELECT
-            schemaname AS schema,
-            relname AS table,
-            last_vacuum,
-            last_autovacuum,
-            last_analyze,
-            last_autoanalyze
-          FROM
-            pg_stat_user_tables
-          ORDER BY
-            1, 2
-        SQL
+        if citus_enabled?
+          select_all <<-SQL
+            WITH dist_maintenance_info AS (
+              SELECT
+                logicalrelid,
+                (
+                  run_command_on_placements(logicalrelid, $$ 
+                  SELECT
+                    last_vacuum 
+                  FROM
+                    pg_stat_user_tables 
+                  WHERE
+                    relname = '%s' $$ )
+                ).result AS last_vacuum,
+                (
+                  run_command_on_placements(logicalrelid, $$ 
+                  SELECT
+                    last_autovacuum 
+                  FROM
+                    pg_stat_user_tables 
+                  WHERE
+                    relname = '%s' $$ )
+                ).result AS last_autovacuum,
+                (
+                  run_command_on_placements(logicalrelid, $$ 
+                  SELECT
+                    last_analyze 
+                  FROM
+                    pg_stat_user_tables 
+                  WHERE
+                    relname = '%s' $$ )
+                ).result AS last_analyze,
+                (
+                  run_command_on_placements(logicalrelid, $$ 
+                  SELECT
+                    last_autoanalyze 
+                  FROM
+                    pg_stat_user_tables 
+                  WHERE
+                    relname = '%s' $$ )
+                ).result AS last_autoanalyze 
+              FROM
+                pg_dist_partition )
+            SELECT
+              schemaname AS schema,
+              relname AS TABLE,
+              CASE WHEN
+                  ((
+                    SELECT
+                      COUNT(*) 
+                    FROM
+                      pg_dist_partition 
+                    WHERE
+                      logicalrelid::name = relname) > 0)
+                THEN
+                  CASE WHEN
+                      ((
+                        SELECT
+                          last_vacuum 
+                        FROM
+                          dist_maintenance_info 
+                        WHERE
+                          logicalrelid::name = relname LIMIT 1) = '')
+                    THEN 
+                      NULL::timestamp with time zone 
+                    ELSE (
+                      SELECT
+                        last_vacuum::timestamp with time zone 
+                      FROM
+                        dist_maintenance_info 
+                      WHERE
+                        logicalrelid::name = relname LIMIT 1) 
+                  END
+                ELSE
+                  last_vacuum 
+              END
+              AS last_vacuum,
+              CASE WHEN
+                  ((
+                    SELECT
+                      COUNT(*) 
+                    FROM
+                      pg_dist_partition 
+                    WHERE
+                      logicalrelid::name = relname) > 0)
+                THEN
+                  CASE WHEN
+                      ((
+                        SELECT
+                          last_autovacuum 
+                        FROM
+                          dist_maintenance_info 
+                        WHERE
+                          logicalrelid::name = relname LIMIT 1) = '')
+                    THEN
+                      NULL::timestamp with time zone 
+                    ELSE (
+                      SELECT
+                        MIN(last_autovacuum::timestamp with time zone) 
+                      FROM
+                        dist_maintenance_info 
+                      WHERE
+                        logicalrelid::name = relname) 
+                  END
+                ELSE
+                  last_autovacuum 
+              END
+              AS last_autovacuum,
+              CASE WHEN
+                  ((
+                    SELECT
+                      COUNT(*) 
+                    FROM
+                      pg_dist_partition 
+                    WHERE
+                      logicalrelid::name = relname) > 0)
+                THEN
+                  CASE WHEN
+                      ((
+                        SELECT
+                          last_analyze 
+                        FROM
+                          dist_maintenance_info 
+                        WHERE
+                          logicalrelid::name = relname LIMIT 1) = '')
+                    THEN
+                      NULL::timestamp with time zone 
+                    ELSE (
+                      SELECT
+                        last_analyze::timestamp with time zone 
+                      FROM
+                        dist_maintenance_info 
+                      WHERE
+                        logicalrelid::name = relname LIMIT 1) 
+                  END
+                ELSE
+                  last_analyze 
+              END
+              AS last_analyze,
+              CASE WHEN
+                  ((
+                    SELECT
+                      COUNT(*) 
+                    FROM
+                      pg_dist_partition 
+                    WHERE
+                      logicalrelid::name = relname) > 0)
+                THEN
+                  CASE WHEN
+                      ((
+                        SELECT
+                          last_autoanalyze 
+                        FROM
+                          dist_maintenance_info 
+                        WHERE
+                          logicalrelid::name = relname LIMIT 1) = '')
+                    THEN
+                      NULL::timestamp with time zone 
+                    ELSE (
+                      SELECT
+                        MIN(last_autoanalyze::timestamp with time zone) 
+                      FROM
+                        dist_maintenance_info 
+                      WHERE
+                        logicalrelid::name = relname) 
+                  END
+                ELSE
+                  last_autoanalyze 
+              END
+              AS last_autoanalyze 
+            FROM
+              pg_stat_user_tables 
+            ORDER BY
+              1, 2
+          SQL          
+        else
+          select_all <<-SQL
+            SELECT
+              schemaname AS schema,
+              relname AS table,
+              last_vacuum,
+              last_autovacuum,
+              last_analyze,
+              last_autoanalyze
+            FROM
+              pg_stat_user_tables
+            ORDER BY
+              1, 2
+          SQL
+        end
       end
 
       def analyze(table, verbose: false)
@@ -85,7 +263,7 @@ module PgHero
           end
           stats[:success] = success
         end
-      end
+      end        
     end
   end
 end
