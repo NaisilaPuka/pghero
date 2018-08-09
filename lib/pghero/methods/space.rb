@@ -7,7 +7,17 @@ module PgHero
         if !citus_enabled?
           PgHero.pretty_size select_one("SELECT pg_database_size(current_database())")
         else
-          PgHero.pretty_size select_one("SELECT SUM(size) FROM (SELECT pg_database_size(current_database()) AS size UNION ALL SELECT result::bigint AS size FROM run_command_on_workers($cmd$ SELECT pg_database_size(current_database()); $cmd$)) AS total_size")
+          PgHero.pretty_size select_one("SELECT 
+                                           sum(size) 
+                                         FROM (
+                                           SELECT 
+                                             pg_database_size(current_database()) AS size 
+                                           UNION ALL 
+                                           SELECT 
+                                             result::bigint AS size 
+                                           FROM run_command_on_workers($cmd$ SELECT 
+                                                                               pg_database_size(current_database()); 
+                                                                       $cmd$)) AS worker_size")
         end
       end
       
@@ -48,27 +58,33 @@ module PgHero
                   idxname::regclass, 
                   (run_command_on_placements(tablename::regclass, $$
                     SELECT 
-                      pg_table_size('$$ || idxname::regclass::text || $$' || replace('%s','$$ || tablename::regclass::text || $$', '')) 
-                  $$)).RESULT
+                      pg_table_size(replace('%s','$$ || tablename::regclass::text || $$', '$$ || idxname::regclass::text || $$')) 
+                  $$)).result
                 FROM   
                   indices 
               ) 
               SELECT   
                 idxname, 
-                SUM(RESULT::bigint) AS idxsize
+                sum(result::bigint) AS idxsize
               FROM     
                 dist_indices 
               GROUP BY 
                 idxname 
             ) 
             SELECT    
-              n.nspname AS SCHEMA, 
+              n.nspname AS schema, 
               c.relname AS relation, 
               CASE WHEN c.relkind = 'r' THEN 'table' ELSE 'index' END AS type, 
               CASE WHEN c.relkind = 'r' THEN 
-                CASE WHEN ((SELECT COUNT(*) FROM pg_dist_partition WHERE logicalrelid = c.oid) > 0) THEN citus_table_size(c.oid) ELSE pg_table_size(c.oid) END 
+                CASE WHEN EXISTS(SELECT logicalrelid FROM pg_dist_partition WHERE logicalrelid = c.oid) 
+                  THEN citus_table_size(c.oid) 
+                  ELSE pg_table_size(c.oid) 
+                END 
               ELSE 
-                CASE WHEN ((SELECT COUNT(idxname) FROM pg_dist_index WHERE idxname = c.oid) > 0) THEN (SELECT idxsize FROM pg_dist_index WHERE idxname = c.oid LIMIT 1) ELSE pg_table_size(c.oid) END 
+                CASE WHEN EXISTS(SELECT idxname FROM dist_indexes_sizes WHERE idxname = c.oid) 
+                  THEN (SELECT idxsize FROM dist_indexes_sizes WHERE idxname = c.oid LIMIT 1) 
+                  ELSE pg_table_size(c.oid) 
+                END 
               END AS size_bytes 
             FROM      
               pg_class c 
@@ -109,7 +125,10 @@ module PgHero
             SELECT 
               n.nspname AS SCHEMA, 
               c.relname AS table, 
-              CASE WHEN ((SELECT COUNT(*) FROM pg_dist_partition WHERE logicalrelid = c.oid) > 0) THEN citus_total_relation_size(c.oid) ELSE pg_total_relation_size(c.oid) END AS size_bytes 
+              CASE WHEN EXISTS(SELECT logicalrelid FROM pg_dist_partition WHERE logicalrelid = c.oid) 
+                  THEN citus_total_relation_size(c.oid) 
+                  ELSE pg_total_relation_size(c.oid) 
+              END AS size_bytes 
             FROM   
               pg_class c 
             LEFT JOIN 
