@@ -43,8 +43,8 @@ module PgHero
           SQL
         else
           select_all_size <<-SQL
-            WITH pg_dist_index AS ( 
-              WITH indices(idxname, tablename) AS ( 
+            WITH dist_indexes_sizes AS ( 
+              WITH dist_indexes(idxname, tablename) AS ( 
                 SELECT 
                   indexrelid, 
                   indrelid 
@@ -53,7 +53,7 @@ module PgHero
                 JOIN   
                   pg_dist_partition ON (indrelid = logicalrelid)
               ), 
-              dist_indexes_sizes AS ( 
+              dist_indexes_shard_sizes AS ( 
                 SELECT 
                   idxname::regclass, 
                   (run_command_on_placements(tablename::regclass, $$
@@ -61,13 +61,13 @@ module PgHero
                       pg_table_size(replace('%s','$$ || tablename::regclass::text || $$', '$$ || idxname::regclass::text || $$')) 
                   $$)).result
                 FROM   
-                  indices 
+                  dist_indexes 
               ) 
               SELECT   
                 idxname, 
                 sum(result::bigint) AS idxsize
               FROM     
-                dist_indices 
+                dist_indexes_shard_sizes 
               GROUP BY 
                 idxname 
             ) 
@@ -96,7 +96,7 @@ module PgHero
               AND c.relkind IN ('r', 'i') 
             ORDER BY  
               size_bytes DESC, 
-              2 ASC            
+              2 ASC             
           SQL
         end
       end
