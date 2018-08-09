@@ -21,7 +21,7 @@
       <% end %>
     </tbody>
   </table>
-<% if @citus_enabled %>
+<% if @citus_enabled && (@citus_nodesno > 0) %>
   <table class="table">
     <thead>
       <tr>
