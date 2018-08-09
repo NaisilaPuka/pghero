@@ -265,7 +265,8 @@ module PgHero
       @title = "Tune"
       @settings = @database.settings
       @citus_enabled = @database.citus_enabled?
-      if @citus_enabled
+      @citus_nodesno = @database.citus_nodesno
+      if @citus_enabled && (@citus_nodesno > 0)
         @citus_worker_settings = @database.citus_worker_settings
       end
       @autovacuum_settings = @database.autovacuum_settings if params[:autovacuum]     
