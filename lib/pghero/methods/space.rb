@@ -53,7 +53,7 @@ module PgHero
                 JOIN   
                   pg_dist_partition ON (indrelid = logicalrelid)
               ), 
-              dist_indices AS ( 
+              dist_indexes_sizes AS ( 
                 SELECT 
                   idxname::regclass, 
                   (run_command_on_placements(tablename::regclass, $$
