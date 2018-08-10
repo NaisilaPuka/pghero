@@ -35,4 +35,8 @@ class BasicTest < Minitest::Test
   def test_databases
     assert PgHero.databases[:primary].running_queries
   end
+
+  def test_no_citus
+    refute PgHero.citus_enabled?
+  end
 end
