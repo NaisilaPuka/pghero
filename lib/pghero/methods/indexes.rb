@@ -264,8 +264,8 @@ module PgHero
             ORDER BY
               n_live_tup DESC,
               relname ASC         
-           SQL
-         end
+          SQL
+        end
       end
 
       def missing_indexes
@@ -410,8 +410,8 @@ module PgHero
             ORDER BY
               n_live_tup DESC,
               relname ASC          
-           SQL
-         end
+          SQL
+        end
       end
 
       def unused_indexes(max_scans: 50, across: [])

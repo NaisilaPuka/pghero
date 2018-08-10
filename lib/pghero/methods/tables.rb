@@ -233,8 +233,8 @@ module PgHero
             ORDER BY
               n_live_tup DESC,
               relname ASC
-           SQL
-         end
+          SQL
+        end
       end
 
       def table_stats(schema: nil, table: nil)
