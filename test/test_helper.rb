@@ -10,6 +10,9 @@ Minitest::Test = MiniTest::Unit::TestCase unless defined?(Minitest::Test)
 
 ActiveRecord::Base.establish_connection adapter: "postgresql", database: "pghero_test"
 
+# Drop the distributed table and the extension properly in case the basic_test_citus has been issued before
+ActiveRecord::Base.connection.execute("DROP TABLE IF EXISTS users CASCADE")
+
 ActiveRecord::Base.connection.execute("DROP EXTENSION IF EXISTS citus CASCADE")
 
 ActiveRecord::Migration.enable_extension "pg_stat_statements"
