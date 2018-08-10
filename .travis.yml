@@ -10,6 +10,8 @@ before_install:
   - gem install bundler
 before_script:
   - psql -c 'create database pghero_test;' -U postgres
+  - psql -p 5433 -c 'create database pghero_test;' -U postgres
+  - psql -p 5433 -d pghero_test -c 'create extension citus;' -U postgres
 notifications:
   email:
     on_success: never
