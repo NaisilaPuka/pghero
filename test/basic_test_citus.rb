@@ -12,4 +12,12 @@ class BasicCitusTest < Minitest::Test
   def test_relation_sizes
     assert PgHero.relation_sizes
   end
+
+  def test_citus_worker_count
+  	assert_equal 1, PgHero.citus_worker_count
+  end
+
+  def test_citus_worker_settings
+  	assert PgHero.citus_worker_settings
+  end
 end
