@@ -275,6 +275,15 @@ module PgHero
 
       @connections_by_database = group_connections(@connection_sources, :database)
       @connections_by_user = group_connections(@connection_sources, :user)
+
+      @citus_enabled = @database.citus_enabled?
+      if @citus_enabled
+        @citus_worker_connection_sources = @database.citus_worker_connection_sources
+        @citus_worker_total_connections = @citus_worker_connection_sources.map {|wcs| wcs.sum {|cs| cs[:total_connections]}}
+
+        @citus_worker_connections_by_database = @citus_worker_connection_sources.map {|wcs| group_connections(wcs, :database)}
+        @citus_worker_connections_by_user = @citus_worker_connection_sources.map {|wcs| group_connections(wcs, :user)}
+      end
     end
 
     def maintenance

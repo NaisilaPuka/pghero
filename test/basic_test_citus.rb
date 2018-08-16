@@ -20,4 +20,8 @@ class BasicCitusTest < Minitest::Test
   def test_citus_worker_settings
   	assert PgHero.citus_worker_settings
   end
+
+  def test_citus_worker_connection_sources
+    assert PgHero.citus_worker_connection_sources
+  end
 end
