@@ -24,4 +24,20 @@ class BasicCitusTest < Minitest::Test
   def test_citus_worker_connection_sources
     assert PgHero.citus_worker_connection_sources
   end
+
+  def test_table_hit_rate
+    assert PgHero.table_hit_rate
+  end
+
+  def test_table_caching
+    assert PgHero.table_caching
+  end
+
+  def test_unused_tables
+    assert PgHero.unused_tables
+  end
+
+  def test_table_stats
+    assert PgHero.table_stats
+  end
 end
