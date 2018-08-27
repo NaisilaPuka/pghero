@@ -40,4 +40,16 @@ class BasicCitusTest < Minitest::Test
   def test_table_stats
     assert PgHero.table_stats
   end
+
+  def test_index_hit_rate
+    assert PgHero.index_hit_rate
+  end
+
+  def test_index_caching
+    assert PgHero.index_caching
+  end
+
+  def test_index_usage
+    assert PgHero.index_usage
+  end
 end
