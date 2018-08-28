@@ -52,4 +52,12 @@ class BasicCitusTest < Minitest::Test
   def test_index_usage
     assert PgHero.index_usage
   end
+
+  def test_missing_indexes
+    assert PgHero.missing_indexes
+  end
+
+  def test_unused_indexes
+    assert PgHero.unused_indexes
+  end
 end
