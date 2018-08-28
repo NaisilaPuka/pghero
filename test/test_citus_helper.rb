@@ -31,7 +31,27 @@ ActiveRecord::Base.connection.execute("SELECT create_distributed_table('users','
 # Create a distributed index
 ActiveRecord::Migration.add_index :users, :updated_at
 
+ActiveRecord::Migration.enable_extension "pg_stat_statements"
+
+ActiveRecord::Migration.create_table :cities, force: true do |t|
+  t.string :name
+end
+
+ActiveRecord::Base.connection.execute("SELECT create_distributed_table('cities','id')")
+
+ActiveRecord::Migration.create_table :states, force: true do |t|
+  t.string :name
+end
+
+ActiveRecord::Base.connection.execute("SELECT create_distributed_table('states','id')")
+
 class User < ActiveRecord::Base
+end
+
+class City < ActiveRecord::Base
+end
+
+class State < ActiveRecord::Base
 end
 
 users =
@@ -49,3 +69,12 @@ users =
   end
 User.import users, validate: false
 ActiveRecord::Base.connection.execute("ANALYZE users")
+
+states =
+  50.times.map do |i|
+    {
+      name: "State #{i}"
+    }
+  end
+State.import states, validate: false
+ActiveRecord::Base.connection.execute("ANALYZE states")
