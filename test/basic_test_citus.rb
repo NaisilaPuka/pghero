@@ -60,4 +60,12 @@ class BasicCitusTest < Minitest::Test
   def test_unused_indexes
     assert PgHero.unused_indexes
   end
+
+  def test_transaction_id_danger
+    assert PgHero.transaction_id_danger
+  end
+
+  def test_maintenance_info
+    assert PgHero.maintenance_info
+  end
 end
