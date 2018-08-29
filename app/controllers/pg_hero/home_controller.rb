@@ -23,6 +23,7 @@ module PgHero
     def index
       @title = "Overview"
       @extended = params[:extended]
+      @citus_enabled = @database.citus_enabled?
 
       if @replica
         @replication_lag = @database.replication_lag
@@ -66,8 +67,22 @@ module PgHero
       @show_migrations = PgHero.show_migrations
     end
 
+    def cluster_info
+      @title = "Cluster Info"
+      @citus_enabled = @database.citus_enabled?
+      @citus_version = @database.citus_version
+      @nodes_info = @database.nodes_info
+      case params[:sort]
+      when "name"
+        @nodes_info.sort_by! { |n| n[:name] }
+      when "size"
+        @nodes_info.sort_by! { |n| n[:size] }.reverse!
+      end
+    end
+
     def space
       @title = "Space"
+      @citus_enabled = @database.citus_enabled?
       @days = (params[:days] || 7).to_i
       @database_size = @database.database_size
       @relation_sizes = params[:tables] ? @database.table_sizes : @database.relation_sizes
@@ -107,12 +122,14 @@ module PgHero
 
     def live_queries
       @title = "Live Queries"
+      @citus_enabled = @database.citus_enabled?
       @running_queries = @database.running_queries(all: true)
       @vacuum_progress = @database.vacuum_progress.index_by { |q| q[:pid] }
     end
 
     def queries
       @title = "Queries"
+      @citus_enabled = @database.citus_enabled?
       @sort = %w(average_time calls).include?(params[:sort]) ? params[:sort] : nil
       @min_average_time = params[:min_average_time] ? params[:min_average_time].to_i : nil
       @min_calls = params[:min_calls] ? params[:min_calls].to_i : nil
@@ -228,6 +245,7 @@ module PgHero
 
     def explain
       @title = "Explain"
+      @citus_enabled = @database.citus_enabled?
       @query = params[:query]
       # TODO use get + token instead of post so users can share links
       # need to prevent CSRF and DoS
@@ -288,6 +306,7 @@ module PgHero
 
     def maintenance
       @title = "Maintenance"
+      @citus_enabled = @database.citus_enabled?
       @maintenance_info = @database.maintenance_info
       @time_zone = PgHero.time_zone
     end

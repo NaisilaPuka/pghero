@@ -31,6 +31,12 @@
           <ul class="nav">
             <!-- poor man's active_link_to -->
             <li class="<%= controller.action_name == "index" ? "active" : "" %>"><%= link_to "Overview", root_path %></li>
+            <% if @citus_enabled %>
+              <li><a href="#" onclick="var x = document.getElementById('citus'); if (x.style.display === 'none') { x.style.display = 'block'; } else { x.style.display = 'none';} this.textContent = this.textContent == 'Citus &#9662;' ? 'Citus &#9663;' : 'Citus &#9662;';">Citus &#9662;</a></li>
+              <div id = "citus" style = "display: none; background-color: #fff;">
+                <li class="<%= controller.action_name == "cluster_info" ? "active" : "" %>"><%= link_to "Cluster Info", cluster_info_path %></li>
+              </div>
+            <% end %>
             <% if @system_stats_enabled %>
               <li class="<%= controller.action_name == "system" ? "active" : "" %>"><%= link_to "System", system_path %></li>
             <% end %>
