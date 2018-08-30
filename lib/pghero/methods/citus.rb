@@ -61,6 +61,46 @@ module PgHero
             1
         SQL
       end
+
+      def colocated_shard_sizes
+        select_all <<-SQL
+          WITH shard_sizes AS (
+            SELECT
+              shardid,
+              result::bigint AS size
+            FROM (
+              SELECT 
+                (run_command_on_shards(logicalrelid, $$ SELECT pg_total_relation_size('%s') $$)).*
+              FROM
+                pg_dist_partition
+              WHERE
+                partmethod = 'h'
+            ) hash_dist_shard_sizes
+          )
+          SELECT
+            pn.nodeid,
+            array_agg(ps.logicalrelid || '_' || ps.shardid) AS shard_group,
+            array_agg(size) AS each_shard_size,
+            sum(size) AS colocated_shards_size
+          FROM
+            shard_sizes ss,
+            pg_dist_partition pp,
+            pg_dist_shard ps,
+            pg_dist_placement ppl,
+            pg_dist_node pn
+          WHERE
+            ss.shardid = ps.shardid
+            AND ps.shardid = ppl.shardid
+            AND pp.logicalrelid = ps.logicalrelid
+            AND ppl.groupid = pn.groupid
+          GROUP BY
+            shardmaxvalue,
+            shardminvalue,
+            1, pp.colocationid
+          ORDER BY
+            1, 4 DESC
+        SQL
+      end
     end
   end
 end
