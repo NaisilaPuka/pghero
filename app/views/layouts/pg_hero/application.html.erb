@@ -35,6 +35,7 @@
               <li><a href="#" onclick="var x = document.getElementById('citus'); if (x.style.display === 'none') { x.style.display = 'block'; } else { x.style.display = 'none';} this.textContent = this.textContent == 'Citus &#9662;' ? 'Citus &#9663;' : 'Citus &#9662;';">Citus &#9662;</a></li>
               <div id = "citus" style = "display: none; background-color: #fff;">
                 <li class="<%= controller.action_name == "cluster_info" ? "active" : "" %>"><%= link_to "Cluster Info", cluster_info_path %></li>
+                <li class="<%= controller.action_name == "data_distribution" ? "active" : "" %>"><%= link_to "Data Distribution", data_distribution_path %></li>
               </div>
             <% end %>
             <% if @system_stats_enabled %>
