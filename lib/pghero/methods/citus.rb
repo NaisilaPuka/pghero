@@ -101,6 +101,40 @@ module PgHero
             1, 4 DESC
         SQL
       end
+
+      def landlord_available?
+        select_all("SELECT * FROM citus_stat_statements LIMIT 1")
+        true
+      rescue ActiveRecord::StatementInvalid
+        false
+      end
+
+      def landlord_stats
+        select_all <<-SQL
+          SELECT
+            queryid,
+            left(query, 10000) AS query,
+            executor,
+            CASE WHEN partition_key = '' IS NOT FALSE THEN '-' ELSE partition_key END AS partition_key,
+            calls
+          FROM
+            citus_stat_statements
+          INNER JOIN
+            pg_database ON pg_database.oid = citus_stat_statements.dbid
+          WHERE
+            pg_database.datname = current_database()
+          ORDER BY
+            5 DESC
+        SQL
+      end
+
+      def reset_landlord_stats(raise_errors: false)
+        execute("SELECT citus_stat_statements_reset()")
+        true
+      rescue ActiveRecord::StatementInvalid => e
+        raise e if raise_errors
+        false
+      end
     end
   end
 end
