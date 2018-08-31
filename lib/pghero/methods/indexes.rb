@@ -231,46 +231,210 @@ module PgHero
       end
 
       def missing_indexes
-        select_all <<-SQL
-          SELECT
-            schemaname AS schema,
-            relname AS table,
-            CASE idx_scan
-              WHEN 0 THEN 'Insufficient data'
-              ELSE (100 * idx_scan / (seq_scan + idx_scan))::text
-            END percent_of_times_index_used,
-            n_live_tup AS estimated_rows
-          FROM
-            pg_stat_user_tables
-          WHERE
-            idx_scan > 0
-            AND (100 * idx_scan / (seq_scan + idx_scan)) < 95
-            AND n_live_tup >= 10000
-          ORDER BY
-            n_live_tup DESC,
-            relname ASC
-         SQL
+        if !citus_enabled?
+          select_all <<-SQL
+            SELECT
+              schemaname AS schema,
+              relname AS table,
+              CASE idx_scan
+                WHEN 0 THEN 'Insufficient data'
+                ELSE (100 * idx_scan / (seq_scan + idx_scan))::text
+              END percent_of_times_index_used,
+              n_live_tup AS estimated_rows
+            FROM
+              pg_stat_user_tables
+            WHERE
+              idx_scan > 0
+              AND (100 * idx_scan / (seq_scan + idx_scan)) < 95
+              AND n_live_tup >= 10000
+            ORDER BY
+              n_live_tup DESC,
+              relname ASC
+           SQL
+        else
+          select_all <<-SQL
+            WITH dist_tables_with_indexes (tablename) AS (
+              SELECT 
+                DISTINCT indrelid::regclass
+              FROM
+                pg_index
+                JOIN pg_dist_partition ON indrelid = logicalrelid
+            ),
+            placement_stats_json AS (
+              SELECT
+                tablename,
+                (run_command_on_placements(tablename, $$ SELECT json_agg(row_to_json(placement_stats)) FROM (
+                  SELECT
+                    idx_scan, seq_scan, n_live_tup
+                  FROM
+                    pg_stat_user_tables
+                  WHERE
+                    relid = '%s'::regclass::oid) placement_stats $$ )).result::json AS stats
+              FROM
+                dist_tables_with_indexes
+            ),
+            placement_stats AS (
+              SELECT
+                tablename,
+                (json_array_elements(stats)->>'idx_scan')::bigint AS idx_scan,
+                (json_array_elements(stats)->>'seq_scan')::bigint AS seq_scan,
+                (json_array_elements(stats)->>'n_live_tup')::bigint AS n_live_tup
+              FROM
+                placement_stats_json
+              ORDER BY
+                tablename
+            )
+            SELECT
+              schemaname AS schema,
+              relname AS table,
+              CASE idx_scan
+                WHEN 0 THEN 'Insufficient data'
+                ELSE (100 * idx_scan / (seq_scan + idx_scan))::text
+              END percent_of_times_index_used,
+              n_live_tup AS estimated_rows
+            FROM (
+              SELECT
+                n.nspname AS schemaname,
+                c.relname,
+                sum(idx_scan) AS idx_scan,
+                sum(seq_scan) AS seq_scan,
+                sum(n_live_tup) AS n_live_tup
+              FROM
+                placement_stats p
+                JOIN pg_class c ON p.tablename::oid = c.oid
+                LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
+              GROUP BY
+                2, 1
+              UNION ALL
+              SELECT
+                schemaname,
+                relname,
+                idx_scan,
+                seq_scan,
+                n_live_tup
+              FROM
+                pg_stat_user_tables s
+              WHERE
+                NOT EXISTS(SELECT * FROM dist_tables_with_indexes WHERE tablename = (schemaname || '.' || relname)::regclass)
+            ) all_stats
+            WHERE
+              idx_scan > 0
+              AND (100 * idx_scan / (seq_scan + idx_scan)) < 95
+              AND n_live_tup >= 10000
+            ORDER BY
+              n_live_tup DESC,
+              relname ASC
+          SQL
+        end
       end
 
       def unused_indexes(max_scans: 50, across: [])
-        result = select_all_size <<-SQL
-          SELECT
-            schemaname AS schema,
-            relname AS table,
-            indexrelname AS index,
-            pg_relation_size(i.indexrelid) AS size_bytes,
-            idx_scan as index_scans
-          FROM
-            pg_stat_user_indexes ui
-          INNER JOIN
-            pg_index i ON ui.indexrelid = i.indexrelid
-          WHERE
-            NOT indisunique
-            AND idx_scan <= #{max_scans.to_i}
-          ORDER BY
-            pg_relation_size(i.indexrelid) DESC,
-            relname ASC
-        SQL
+        if !citus_enabled?
+          result = select_all_size <<-SQL
+            SELECT
+              schemaname AS schema,
+              relname AS table,
+              indexrelname AS index,
+              pg_relation_size(i.indexrelid) AS size_bytes,
+              idx_scan as index_scans
+            FROM
+              pg_stat_user_indexes ui
+            INNER JOIN
+              pg_index i ON ui.indexrelid = i.indexrelid
+            WHERE
+              NOT indisunique
+              AND idx_scan <= #{max_scans.to_i}
+            ORDER BY
+              pg_relation_size(i.indexrelid) DESC,
+              relname ASC
+          SQL
+        else
+          result = select_all_size <<-SQL
+            WITH dist_indexes AS (
+              SELECT
+                indexname,
+                logicalrelid,
+                schemaname,
+                tablename
+              FROM
+                pg_indexes
+                JOIN pg_dist_partition ON tablename = logicalrelid::name OR schemaname::text || '.' || tablename::text = logicalrelid::text
+            ),
+            placement_idx_sizes_scans AS (
+              SELECT
+                indexname,
+                1 AS count,
+                (run_command_on_placements(logicalrelid, $$
+                  SELECT
+                    pg_relation_size('$$ || schemaname::text || $$' || '.' || replace('%s','$$ || logicalrelid::text || $$', '$$ || indexname::text || $$')) $$ )).result::bigint AS placement_idx_size,
+                (run_command_on_placements(logicalrelid, $$
+                  SELECT
+                    idx_scan
+                  FROM
+                    pg_stat_user_indexes
+                  WHERE
+                    indexrelname = replace('%s','$$ || logicalrelid::text || $$', '$$ || indexname::text || $$') $$ )).result::bigint AS idx_scan
+              FROM
+                dist_indexes
+            ),
+            dist_index_size_scan AS (
+              SELECT
+                schemaname,
+                tablename AS relname,
+                p.indexname AS indexrelname,
+                sum(placement_idx_size) AS size_bytes,
+                sum(idx_scan) / sum(count) AS idx_scan,
+                (SELECT indexrelid FROM pg_stat_user_indexes ui WHERE ui.schemaname = schemaname AND ui.relname = tablename AND ui.indexrelname = p.indexname) AS indexrelid
+              FROM
+                placement_idx_sizes_scans p
+                JOIN dist_indexes d ON p.indexname = d.indexname
+              GROUP BY
+                3, 2, 1
+              ORDER BY
+                3
+            )
+            SELECT
+              schemaname AS schema,
+              relname AS table,
+              indexrelname AS index,
+              size_bytes,
+              idx_scan as index_scans
+            FROM (
+              SELECT
+                schemaname,
+                tablename AS relname,
+                p.indexname AS indexrelname,
+                sum(placement_idx_size) AS size_bytes,
+                sum(idx_scan) / sum(count) AS idx_scan,
+                (SELECT indexrelid FROM pg_stat_user_indexes ui WHERE ui.schemaname = schemaname AND ui.relname = tablename AND ui.indexrelname = p.indexname) AS indexrelid
+              FROM
+                placement_idx_sizes_scans p
+                JOIN dist_indexes d ON p.indexname = d.indexname
+              GROUP BY
+                3, 2, 1
+              UNION ALL
+              SELECT
+                schemaname,
+                relname,
+                indexrelname,
+                pg_relation_size(indexrelid) AS size_bytes,
+                idx_scan,
+                indexrelid
+              FROM
+                pg_stat_user_indexes s
+              WHERE
+                NOT EXISTS(SELECT * FROM dist_indexes WHERE indexname = s.indexrelname AND tablename = relname AND schemaname = s.schemaname)
+            ) ui
+            INNER JOIN
+              pg_index i ON ui.indexrelid = i.indexrelid
+            WHERE
+              NOT indisunique
+              AND idx_scan <= #{max_scans.to_i}
+            ORDER BY
+              size_bytes DESC,
+              relname ASC
+          SQL
+        end
 
         across.each do |database_id|
           database = PgHero.databases.values.find { |d| d.id == database_id }
@@ -283,8 +447,13 @@ module PgHero
       end
 
       def reset_stats
-        execute("SELECT pg_stat_reset()")
-        true
+        if !citus_enabled?
+          execute("SELECT pg_stat_reset()")
+          true
+        else
+          execute("SELECT pg_stat_reset() UNION ALL SELECT (run_command_on_workers($$ SELECT pg_stat_reset() $$)).result::void AS pg_stat_reset")
+          true          
+        end
       end
 
       def last_stats_reset_time
