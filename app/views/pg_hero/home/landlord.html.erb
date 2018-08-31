@@ -1,0 +1,86 @@
+<div class="content">
+  <h1>Landlord</h1>
+  <% if !@query_stats_enabled %>
+    <% if @query_stats_available && !@query_stats_extension_enabled %>
+      <p>
+        Query stats need to be enabled for Landlord a.k.a citus_stat_statements. They are available but not enabled.
+        <%= button_to "Enable", enable_query_stats_path, class: "btn btn-info" %>
+      </p>
+    <% else %>
+      <p>Query stats need to be enabled for Landlord a.k.a citus_stat_statements. Make them available by adding the following lines to <code>postgresql.conf</code>:</p>
+      <pre>shared_preload_libraries = 'pg_stat_statements'
+pg_stat_statements.track = all</pre>
+      <p>Restart the server for the changes to take effect.</p>
+    <% end %>
+  <% else %>
+    <% if !@landlord_available %>
+      <p> 
+        Landlord a.k.a <code>citus_stat_statements</code> view is a part of Citus Enterprise, starting from version 7.5. If you are already on Citus Enterprise, please 
+        <a href = "https://docs.citusdata.com/en/latest/admin_guide/upgrading_citus.html"> upgrade Citus version</a>. Otherwise, please 
+        <a href = "https://www.citusdata.com/about/contact_us">contact <b><span style="color: #239f49;">Citus</span> <span style="color: #09436a;">Data</span></b></a> 
+        to obtain this functionality.
+      </p>
+    <% else %>
+      <p> 
+        Landlord a.k.a <code>citus_stat_statements</code> is a view that provides executor type, partition key value, and number of calls to a <b>distributed query</b>.
+      </p>
+      <% if @landlord_stats.any? %>
+        <h3>Citus Executor Used</h3>
+  
+        <div id="chart-1" class="chart" style="height: 260px; line-height: 260px; margin-bottom: 20px;">Loading...</div>
+        <script>
+          new Chartkick.PieChart("chart-1", <%= json_escape(@grouped_dist_queries_executor.to_json).html_safe %>);
+        </script>
+        <% if @grouped_dist_queries_executor.to_h.key?("router") %>
+          <% if @grouped_dist_queries_executor.to_h["router"] > @grouped_dist_queries_executor.sum{ |k, v| v } / 2 %>
+            <p>
+              More than half of the distributed queries use the <b>router</b> executor. This chart shows up to 20 busiest tenants.
+            </p>
+            <div id="chart-2" class="chart" style="height: 380px; line-height: 380px; width: 600px; margin-bottom: 20px; margin-left: auto; margin-right: auto;">Loading...</div>
+            <script>
+              new Chartkick.BarChart("chart-2", <%= json_escape(@grouped_dist_queries_partkey.to_json).html_safe %>, {colors: ["#5bc0de"], xtitle: ["#Queries"], ytitle: ["Tenant ID"]});
+            </script>
+          <% end %>
+        <% end %>
+        <h3>Distributed Query Stats Table</h3>
+        <table class="table queries-table">
+          <thead>
+            <tr>
+              <th><%= link_to "Executor", {sort: "executor"} %></th>
+              <th><%= link_to "Partition Key", {sort: "partition_key"} %></th>
+              <th><%= link_to "Calls", {} %></th>
+            </tr>
+          </thead>
+          <tbody>
+            <% @landlord_stats.each do |dist_query| %>
+              <tr>
+                <td>
+                  <%= dist_query[:executor] %>
+                </td>
+                <td>
+                  <%= dist_query[:partition_key] %>
+                </td>
+                <td>
+                  <%= number_with_delimiter(dist_query[:calls]) %>
+                </td>
+              </tr>
+              <tr>
+                <td colspan="3" style="border-top: none; padding: 0;">
+                  <pre><code style="max-height: 230px; overflow: hidden;" onclick="this.style.maxHeight = 'none';"><%= dist_query[:query] %></code></pre>
+                  <% if dist_query[:query] == "<insufficient privilege>" %>
+                    <p class="text-muted">For security reasons, only superusers can see queries executed by other users.</p>
+                  <% end %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+        <script>
+          highlightQueries();
+        </script>
+      <% else %>
+        <p>No data available for this time.</p>
+      <% end %>
+    <% end %>
+  <% end %>
+</div>

@@ -90,6 +90,27 @@ module PgHero
       end
     end
 
+    def landlord
+      @title = "Landlord"
+      @citus_enabled = @database.citus_enabled?
+      @landlord_available = @database.landlord_available?
+      if !@query_stats_enabled
+        @query_stats_available = @database.query_stats_available?
+        @query_stats_extension_enabled = @database.query_stats_extension_enabled? if @query_stats_available
+      end
+      if @landlord_available
+        @landlord_stats = @database.landlord_stats
+        case params[:sort]
+        when "executor"
+          @landlord_stats.sort_by! { |l| l[:executor] }
+        when "partition_key"
+          @landlord_stats.sort_by! { |l| l[:partition_key] }.reverse!
+        end
+        @grouped_dist_queries_executor = group_dist_queries(@landlord_stats, :executor)
+        @grouped_dist_queries_partkey = (group_dist_queries(@landlord_stats, :partition_key)).to_h.reject { |pk| pk == "-" }.to_a.first(20)
+      end
+    end
+
     def space
       @title = "Space"
       @citus_enabled = @database.citus_enabled?
@@ -353,6 +374,13 @@ module PgHero
       redirect_backward alert: "The database user does not have permission to reset query stats"
     end
 
+    def reset_landlord_stats
+      @database.reset_landlord_stats
+      redirect_backward notice: "Landlord stats reset"
+    rescue ActiveRecord::StatementInvalid
+      redirect_backward alert: "The database user does not have permission to reset landlord stats"
+    end
+
     protected
 
     def redirect_backward(options = {})
@@ -420,6 +448,14 @@ module PgHero
         top_connections[source[key]] += source[:total_connections]
       end
       top_connections.sort_by { |k, v| [-v, k] }
+    end
+    
+    def group_dist_queries(landlord_stats, key)
+      grouped_queries = Hash.new(0)
+      landlord_stats.each do |dist_query|
+        grouped_queries[dist_query[key]] += dist_query[:calls]
+      end
+      grouped_queries.sort_by { |k, v| [-v, k] }
     end
 
     def check_api
