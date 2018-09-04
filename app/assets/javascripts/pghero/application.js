@@ -148,3 +148,12 @@ function initSlider() {
     refreshStats(false);
   });
 }
+
+function initDetailPanes() {
+  $("tr.details").click(function() {
+    var $tr = $(this).next();
+    $tr.toggle(function() {
+      $(this).find("> td > div").slideToggle();
+    });
+  });
+}

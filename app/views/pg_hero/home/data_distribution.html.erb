@@ -1,5 +1,58 @@
 <div class="content">
   <h1>Data Distribution</h1>
+  <h3>Shards</h3>
+  <p><b>Click</b> distributed table's row to see data distribution in its shards.</p>
+  <table class="table space-table">
+    <thead>
+      <tr>
+        <th>Distributed Table</th>
+        <th style="width: 15%;">Size</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @distributed_tables.each do |dist_table| %>
+        <tr class = "details">
+          <td>
+            <span style="word-break: break-all;">
+              <%= dist_table[:dist_table_name] %>
+            </span>
+            <% if dist_table[:schema] != "public" %>
+              <span class="text-muted"><%= dist_table[:schema] %></span>
+            <% end %>
+          </td>
+          <td style="width: 15%;">
+            <span style="word-break: break-all;">
+              <%= PgHero.pretty_size(dist_table[:size_bytes]) %>
+            </span>
+          </td>
+          <tr>
+            <td colspan="2">
+              <div align=center style="display:none">
+                <table style="width: 75%;">
+                  <thead>
+                    <tr style="color: #09436a; background: #239f49">
+                      <th style="width: 20%;">Node ID</th>
+                      <th>Shard ID</th>
+                      <th>Shard Size</th>
+                      <th style="width: 24%;">Tenant Count</th>
+                    </tr>
+                  </thead>
+                  <% dist_table[:shards].each do |shard| %>
+                    <tr>
+                      <td style="width: 20%;"><%= shard[:nodeid] %></td>
+                      <td><%= '#' + shard[:id].to_s %></td>
+                      <td><%= PgHero.pretty_size(shard[:size_bytes]) %></td>
+                      <td style="width: 24%;"><%= shard[:tenant_count] %></td>                   
+                    </tr>
+                  <% end %>
+                </table>
+              </div>
+            </td>
+          </tr>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
   <h3>Shard Colocation Groups</h3>
   <p><b><span style="color: #09436a;">NOTE: </span></b>The colocations include only shards of the tables that are <em>hash</em> distributed.</p>
   <table class="table colocations-table">
@@ -57,3 +110,6 @@
     </tbody>
   </table>
 </div>
+<script>
+  initDetailPanes();
+</script>
