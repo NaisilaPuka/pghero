@@ -135,6 +135,66 @@ module PgHero
         raise e if raise_errors
         false
       end
+
+      def distributed_tables
+        select_all <<-SQL
+          SELECT
+            logicalrelid,
+            schemaname AS schema,
+            tablename AS dist_table_name,
+            column_to_column_name(logicalrelid, partkey) AS partition_column,
+            citus_relation_size(logicalrelid) AS size_bytes
+          FROM
+            pg_dist_partition
+          JOIN
+            pg_tables
+            ON logicalrelid = (schemaname || '.' || tablename)::regclass
+          WHERE
+            partmethod != 'n'
+          ORDER BY
+            5 DESC
+        SQL
+      end
+
+      def shard_data_distribution(logicalrelid, partition_column)
+        select_all <<-SQL
+          WITH tenants AS (
+            SELECT
+              shardid,
+              result::int AS tenant_count
+            FROM
+              run_command_on_shards(#{quote(logicalrelid)}, $$
+                SELECT
+                  count(distinct #{quote_ident(partition_column)})
+                FROM
+                  %s $$)
+          ),
+          sizes AS (
+            SELECT
+              shardid,
+              result::bigint AS size_bytes
+            FROM
+              run_command_on_shards(#{quote(logicalrelid)}, $$
+                SELECT
+                  pg_table_size('%s') $$)
+          )
+          SELECT
+            nodeid,
+            tenants.shardid AS id,
+            tenant_count,
+            size_bytes
+          FROM
+            tenants
+          JOIN
+            sizes ON tenants.shardid = sizes.shardid
+          JOIN
+            pg_dist_placement pdp ON pdp.shardid = tenants.shardid
+          JOIN
+            pg_dist_node pdn ON pdp.groupid = pdn.groupid
+          ORDER BY
+            1, 4 DESC
+        SQL
+      end
     end
   end
 end
