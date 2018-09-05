@@ -3,6 +3,7 @@ PgHero::Engine.routes.draw do
     get "cluster_info", to: "home#cluster_info"
     get "data_distribution", to:"home#data_distribution"
     get "landlord", to:"home#landlord"
+    get "citus_settings", to:"home#citus_settings"
     get "space", to: "home#space"
     get "space/:relation", to: "home#relation_space", as: :relation_space
     get "index_bloat", to: "home#index_bloat"

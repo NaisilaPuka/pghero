@@ -120,6 +120,12 @@ module PgHero
       end
     end
 
+    def citus_settings
+      @title = "Settings"
+      @citus_enabled = @database.citus_enabled?
+      @citus_settings = @database.citus_settings
+    end
+
     def space
       @title = "Space"
       @citus_enabled = @database.citus_enabled?
