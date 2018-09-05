@@ -21,6 +21,22 @@ module PgHero
         end
       end
 
+      def node_sizes
+        select_all <<-SQL
+          SELECT
+            'Coordinator' AS name,
+            pg_database_size(current_database()) AS size
+          UNION ALL
+          SELECT
+            'Worker Node ' || nodeid AS name,
+            result::bigint AS size
+          FROM
+            (SELECT (run_command_on_workers($$ SELECT pg_database_size(current_database()) $$)).* ) w
+          JOIN
+            pg_dist_node pn ON (pn.nodename = w.nodename AND pn.nodeport = w.nodeport)
+        SQL
+      end
+
       def relation_sizes
         if !citus_enabled?
           select_all_size <<-SQL
@@ -43,60 +59,72 @@ module PgHero
           SQL
         else
           select_all_size <<-SQL
-            WITH dist_indexes_sizes AS ( 
-              WITH dist_indexes(idxname, tablename) AS ( 
-                SELECT 
-                  indexrelid, 
-                  indrelid 
-                FROM   
-                  pg_index 
-                JOIN   
-                  pg_dist_partition ON (indrelid = logicalrelid)
-              ), 
-              dist_indexes_shard_sizes AS ( 
-                SELECT 
-                  idxname::regclass, 
-                  (run_command_on_placements(tablename::regclass, $$
-                    SELECT 
-                      pg_table_size(replace('%s','$$ || tablename::regclass::text || $$', '$$ || idxname::regclass::text || $$')) 
-                  $$)).result
-                FROM   
-                  dist_indexes 
-              ) 
-              SELECT   
-                idxname, 
-                sum(result::bigint) AS idxsize
-              FROM     
-                dist_indexes_shard_sizes 
-              GROUP BY 
-                idxname 
-            ) 
-            SELECT    
-              n.nspname AS schema, 
-              c.relname AS relation, 
-              CASE WHEN c.relkind = 'r' THEN 'table' ELSE 'index' END AS type, 
-              CASE WHEN c.relkind = 'r' THEN 
-                CASE WHEN EXISTS(SELECT * FROM pg_dist_partition WHERE logicalrelid = c.oid) 
-                  THEN citus_table_size(c.oid) 
-                  ELSE pg_table_size(c.oid) 
-                END 
-              ELSE 
-                CASE WHEN EXISTS(SELECT * FROM dist_indexes_sizes WHERE idxname = c.oid) 
-                  THEN (SELECT idxsize FROM dist_indexes_sizes WHERE idxname = c.oid LIMIT 1) 
-                  ELSE pg_table_size(c.oid) 
-                END 
-              END AS size_bytes 
-            FROM      
-              pg_class c 
-            LEFT JOIN 
-              pg_namespace n ON n.oid = c.relnamespace 
-            WHERE     
-              n.nspname NOT IN ('pg_catalog', 'information_schema') 
-              AND n.nspname !~ '^pg_toast' 
-              AND c.relkind IN ('r', 'i') 
-            ORDER BY  
-              size_bytes DESC, 
-              2 ASC            
+            WITH dist_indexes(idxname, tablename) AS (
+              SELECT 
+                indexrelid,
+                indrelid,
+                partmethod
+              FROM
+                pg_index
+              JOIN
+                pg_dist_partition ON (indrelid = logicalrelid)
+            ),
+            dist_indexes_shard_sizes AS (
+              SELECT
+                idxname::regclass,
+                (run_command_on_placements(tablename::regclass, $$
+                  SELECT
+                    pg_table_size(replace('%s','$$ || tablename::regclass::text || $$', '$$ || idxname::regclass::text || $$'))
+                $$)).result
+              FROM
+                dist_indexes
+            ),
+            dist_indexes_sizes AS (
+            SELECT
+              idxname,
+              sum(result::bigint) AS idxsize
+            FROM
+              dist_indexes_shard_sizes
+            GROUP BY
+              idxname
+            )
+            SELECT
+              n.nspname AS schema,
+              c.relname AS relation,
+              CASE WHEN c.relkind = 'r' THEN 'table' ELSE 'index' END AS type,
+              CASE WHEN c.relkind = 'r' THEN
+                CASE WHEN EXISTS(SELECT * FROM pg_dist_partition WHERE logicalrelid = c.oid)
+                  THEN citus_table_size(c.oid)
+                  ELSE pg_table_size(c.oid)
+                END
+              ELSE
+                CASE WHEN EXISTS(SELECT * FROM dist_indexes_sizes WHERE idxname = c.oid)
+                  THEN (SELECT idxsize FROM dist_indexes_sizes WHERE idxname = c.oid LIMIT 1)
+                  ELSE pg_table_size(c.oid)
+                END
+              END AS size_bytes,
+              CASE WHEN c.relkind = 'r' THEN
+                CASE WHEN EXISTS(SELECT * FROM pg_dist_partition WHERE logicalrelid = c.oid AND partmethod != 'n') THEN 'distributed'
+                WHEN EXISTS(SELECT * FROM pg_dist_partition WHERE logicalrelid = c.oid AND partmethod = 'n') THEN 'reference'
+                ELSE '-'
+                END
+              ELSE
+                CASE WHEN EXISTS(SELECT * FROM dist_indexes WHERE idxname = c.oid AND partmethod != 'n') THEN 'distributed'
+                WHEN EXISTS(SELECT * FROM dist_indexes WHERE idxname = c.oid AND partmethod = 'n') THEN 'reference'
+                ELSE '-'
+                END
+              END AS partmethod
+            FROM
+              pg_class c
+            LEFT JOIN
+              pg_namespace n ON n.oid = c.relnamespace
+            WHERE
+              n.nspname NOT IN ('pg_catalog', 'information_schema')
+              AND n.nspname !~ '^pg_toast'
+              AND c.relkind IN ('r', 'i')
+            ORDER BY
+              size_bytes DESC,
+              2 ASC
           SQL
         end
       end
