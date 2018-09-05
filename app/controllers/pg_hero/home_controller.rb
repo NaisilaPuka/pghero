@@ -72,11 +72,16 @@ module PgHero
       @citus_enabled = @database.citus_enabled?
       @citus_version = @database.citus_version
       @nodes_info = @database.nodes_info
+      @dist_tables_extended = @database.dist_tables_extended
       case params[:sort]
       when "name"
         @nodes_info.sort_by! { |n| n[:name] }
       when "size"
         @nodes_info.sort_by! { |n| n[:size] }.reverse!
+      when "dist_table_name"
+        @dist_tables_extended.sort_by! {|p| p[:dist_table_name]}
+      when "part_size"
+        @dist_tables_extended.sort_by! {|p| p[:part_size]}.reverse!
       end
     end
 
