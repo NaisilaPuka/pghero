@@ -10,7 +10,11 @@
   </head>
   <body>
     <div class="container">
-      <div class="alert alert-<%= alert ? "danger" : "info" %>">
+      <% if !@citus_enabled %>
+        <div class="alert alert-<%= alert ? "danger" : "info" %>">
+      <% else %>
+        <div class="alert alert-<%= alert ? "danger" : "info-citus" %>">
+      <% end %>
         <% if alert %>
           <%= alert %>
         <% elsif notice %>
@@ -18,7 +22,11 @@
         <% elsif Rails.env.development? %>
           Do not use development information to make decisions about your production environment
         <% else %>
-          <%= link_to "PgHero", root_path %>
+          <% if !@citus_enabled %>
+            <%= link_to "PgHero", root_path %>
+          <% else %>
+            <%= link_to "CitusHero", root_path %>
+          <% end %>
         <% end %>
       </div>
 

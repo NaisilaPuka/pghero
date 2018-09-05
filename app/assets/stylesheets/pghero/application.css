@@ -272,8 +272,16 @@ hr {
   background-color: #5bc0de;
 }
 
+.alert-info-citus {
+  background-color: #09436a;
+}
+
 .alert-success {
   background-color: #5cb85c;
+}
+
+.alert-success-citus {
+  background-color: #239f49;
 }
 
 .alert-warning {

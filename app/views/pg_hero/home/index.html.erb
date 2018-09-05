@@ -1,6 +1,10 @@
 <div id="status">
   <% if @replica %>
-    <div class="alert alert-<%= @good_replication_lag ? "success" : "warning" %>">
+    <% if !@citus_enabled %>
+      <div class="alert alert-<%= @good_replication_lag ? "success" : "warning" %>">
+    <% else %>
+      <div class="alert alert-<%= @good_replication_lag ? "success-citus" : "warning" %>">
+    <% end %>
       <% if @replication_lag %>
         <% if @good_replication_lag %>
           Healthy replication lag
@@ -17,7 +21,11 @@
       <%= pluralize(@inactive_replication_slots.size, "inactive replication slot") %>
     </div>
   <% end %>
-  <div class="alert alert-<%= @long_running_queries.empty? ? "success" : "warning" %>">
+  <% if !@citus_enabled %>
+    <div class="alert alert-<%= @long_running_queries.empty? ? "success" : "warning" %>">
+  <% else %>
+    <div class="alert alert-<%= @long_running_queries.empty? ? "success-citus" : "warning" %>">
+  <% end %>
     <% if @long_running_queries.any? %>
       <%= pluralize(@long_running_queries.size, "long running query") %>
     <% else %>
@@ -28,7 +36,11 @@
     <% end %>
   </div>
   <% if @extended %>
-    <div class="alert alert-<%= @good_cache_rate ? "success" : "warning" %>">
+    <% if !@citus_enabled %>
+      <div class="alert alert-<%= @good_cache_rate ? "success" : "warning" %>">
+    <% else %>
+      <div class="alert alert-<%= @good_cache_rate ? "success-citus" : "warning" %>">
+    <% end %>
       <% if @good_cache_rate %>
         Cache hit rate above <%= @database.cache_hit_rate_threshold %>%
       <% else %>
@@ -36,7 +48,11 @@
       <% end %>
     </div>
   <% end %>
-  <div class="alert alert-<%= @good_total_connections ? "success" : "warning" %>">
+  <% if !@citus_enabled %>
+    <div class="alert alert-<%= @good_total_connections ? "success" : "warning" %>">
+  <% else %>
+    <div class="alert alert-<%= @good_total_connections ? "success-citus" : "warning" %>">
+  <% end %>
     <% if @good_total_connections %>
       Number of connections healthy
     <% else %>
@@ -44,14 +60,22 @@
     <% end %>
     <span class="tiny"><%= @total_connections %></span>
   </div>
-  <div class="alert alert-<%= @transaction_id_danger.empty? ? "success" : "warning" %>">
+  <% if !@citus_enabled %>
+    <div class="alert alert-<%= @transaction_id_danger.empty? ? "success" : "warning" %>">
+  <% else %>
+    <div class="alert alert-<%= @transaction_id_danger.empty? ? "success-citus" : "warning" %>">
+  <% end %>
     <% if @transaction_id_danger.any? %>
       <%= pluralize(@transaction_id_danger.size, "table") %> not vacuuming properly
     <% else %>
       Vacuuming healthy
     <% end %>
   </div>
-  <div class="alert alert-<%= @sequence_danger && @sequence_danger.empty? ? "success" : "warning" %>">
+  <% if !@citus_enabled %>
+    <div class="alert alert-<%= @sequence_danger && @sequence_danger.empty? ? "success" : "warning" %>">
+  <% else %>
+    <div class="alert alert-<%= @sequence_danger && @sequence_danger.empty? ? "success-citus" : "warning" %>">
+  <% end %>
     <% if @sequence_danger.any? %>
       <%= pluralize(@sequence_danger.size, "column") %> approaching overflow
     <% else %>
@@ -61,7 +85,11 @@
       (<%= link_to pluralize(@unreadable_sequences.size, "unreadable sequence", "unreadable sequences"), {unreadable: "t"} %>)
     <% end %>
   </div>
-  <div class="alert alert-<%= @invalid_indexes.empty? ? "success" : "warning" %>">
+  <% if !@citus_enabled %>
+    <div class="alert alert-<%= @invalid_indexes.empty? ? "success" : "warning" %>">
+  <% else %>
+    <div class="alert alert-<%= @invalid_indexes.empty? ? "success-citus" : "warning" %>">
+  <% end %>
     <% if @invalid_indexes.any? %>
       <%= pluralize(@invalid_indexes.size, "invalid index", "invalid indexes") %>
     <% else %>
@@ -69,7 +97,11 @@
     <% end %>
   </div>
   <% if @duplicate_indexes %>
-    <div class="alert alert-<%= @duplicate_indexes.empty? ? "success" : "warning" %>">
+    <% if !@citus_enabled %>
+      <div class="alert alert-<%= @duplicate_indexes.empty? ? "success" : "warning" %>">
+    <% else %>
+      <div class="alert alert-<%= @duplicate_indexes.empty? ? "success-citus" : "warning" %>">
+    <% end %>
       <% if @duplicate_indexes.any? %>
         <%= pluralize(@duplicate_indexes.size, "duplicate index", "duplicate indexes") %>
       <% else %>
@@ -78,7 +110,11 @@
     </div>
   <% end %>
   <% if @database.suggested_indexes_enabled? %>
-    <div class="alert alert-<%= @suggested_indexes.empty? ? "success" : "warning" %>">
+    <% if !@citus_enabled %>
+      <div class="alert alert-<%= @suggested_indexes.empty? ? "success" : "warning" %>">
+    <% else %>
+      <div class="alert alert-<%= @suggested_indexes.empty? ? "success-citus" : "warning" %>">
+    <% end %>
       <% if @suggested_indexes.any? %>
         <%= pluralize(@suggested_indexes.size, "suggested index", "suggested indexes") %>
       <% else %>
@@ -86,7 +122,11 @@
       <% end %>
     </div>
   <% end %>
-  <div class="alert alert-<%= @query_stats_enabled && @slow_queries.empty? ? "success" : "warning" %>">
+  <% if !@citus_enabled %>
+    <div class="alert alert-<%= @query_stats_enabled && @slow_queries.empty? ? "success" : "warning" %>">
+  <% else %>
+    <div class="alert alert-<%= @query_stats_enabled && @slow_queries.empty? ? "success-citus" : "warning" %>">
+  <% end %>
     <% if !@query_stats_enabled %>
       Query stats must be enabled for slow queries
     <% elsif @slow_queries.any? %>
@@ -96,7 +136,11 @@
     <% end %>
   </div>
   <% if @extended %>
-    <div class="alert alert-<%= @unused_indexes.empty? ? "success" : "warning" %>">
+    <% if !@citus_enabled %>
+      <div class="alert alert-<%= @unused_indexes.empty? ? "success" : "warning" %>">
+    <% else %>
+      <div class="alert alert-<%= @unused_indexes.empty? ? "success-citus" : "warning" %>">
+    <% end %>
       <% if @unused_indexes.any? %>
         <%= pluralize(@unused_indexes.size, "unused index", "unused indexes") %>
       <% else %>
