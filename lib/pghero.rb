@@ -47,7 +47,7 @@ module PgHero
   class << self
     extend Forwardable
     def_delegators :primary_database, :access_key_id, :analyze, :analyze_tables, :autoindex, :autovacuum_danger,
-      :citus_enabled?, :citus_readable?, :citus_worker_count, :citus_version, :nodes_info, :colocated_shard_sizes, :node_sizes,
+      :citus_enabled?, :citus_readable?, :citus_worker_count, :citus_version, :nodes_info, :colocated_shard_sizes, :node_sizes, :citus_settings,
       :landlord_available?, :landlord_stats, :reset_landlord_stats, :distributed_tables, :shard_data_distribution, :partitioned_tables,
       :best_index, :blocked_queries, :connection_sources, :connection_stats, :citus_worker_connection_sources,
       :cpu_usage, :create_user, :database_size, :db_instance_identifier, :disable_query_stats, :drop_user,

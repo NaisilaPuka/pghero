@@ -45,6 +45,7 @@
                 <li class="<%= controller.action_name == "cluster_info" ? "active" : "" %>"><%= link_to "Cluster Info", cluster_info_path %></li>
                 <li class="<%= controller.action_name == "data_distribution" ? "active" : "" %>"><%= link_to "Data Distribution", data_distribution_path %></li>
                 <li class="<%= controller.action_name == "landlord" ? "active" : "" %>"><%= link_to "Landlord", landlord_path %></li>
+                <li class="<%= controller.action_name == "citus_settings" ? "active" : "" %>"><%= link_to "Configuration", citus_settings_path %></li>
               </div>
             <% end %>
             <% if @system_stats_enabled %>
