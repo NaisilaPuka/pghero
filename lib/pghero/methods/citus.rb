@@ -195,6 +195,26 @@ module PgHero
             1, 4 DESC
         SQL
       end
+
+      def partitioned_tables
+        select_all <<-SQL
+          SELECT
+            colocationid AS coloc_id,
+            schemaname AS schema,
+            tablename AS part_table_name,
+            CASE WHEN partmethod != 'n' THEN 'distributed' ELSE 'reference' END AS partmethod,
+            CASE WHEN partmethod != 'n' THEN column_to_column_name(logicalrelid, partkey) ELSE '-' END AS partition_column,
+            (SELECT count(*) FROM run_command_on_shards(logicalrelid, 'SELECT 1')) AS shard_count,
+            citus_total_relation_size(logicalrelid) AS part_size
+          FROM
+            pg_dist_partition
+          JOIN
+            pg_tables
+            ON logicalrelid = (schemaname || '.' || tablename)::regclass
+          ORDER BY
+            1, 3, 2 DESC
+        SQL
+      end
     end
   end
 end
