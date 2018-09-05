@@ -28,7 +28,7 @@
     <% worker_connections = @citus_worker_connections_by_database.zip(@citus_worker_connections_by_user) %>
     <% chart_count = 3 %>
     <% worker_connections.each_with_index do |(conn_database, conn_user), index| %>
-      <h2>Worker <%= index + 1 %></h2>
+      <h2>Worker Node <%= @citus_worker_connection_sources[index].first[:nodeid] %></h2>
       <p><%= pluralize(@citus_worker_total_connections[index], "connection") %></p>
       <h3>By Database</h3>
 
