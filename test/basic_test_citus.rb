@@ -76,4 +76,8 @@ class BasicCitusTest < Minitest::Test
   def test_nodes_info
     assert PgHero.nodes_info
   end
+
+  def test_colocated_shard_sizes
+    assert PgHero.colocated_shard_sizes
+  end
 end
