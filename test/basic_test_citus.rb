@@ -68,4 +68,12 @@ class BasicCitusTest < Minitest::Test
   def test_maintenance_info
     assert PgHero.maintenance_info
   end
+
+  def test_citus_version
+    assert PgHero.citus_version
+  end
+
+  def test_nodes_info
+    assert PgHero.nodes_info
+  end
 end
