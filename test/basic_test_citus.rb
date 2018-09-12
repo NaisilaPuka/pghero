@@ -92,4 +92,8 @@ class BasicCitusTest < Minitest::Test
   def test_dist_tables_extended
     assert PgHero.dist_tables_extended
   end
+
+  def test_node_sizes
+    assert PgHero.node_sizes
+  end
 end
