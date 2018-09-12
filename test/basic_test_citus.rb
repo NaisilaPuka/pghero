@@ -96,4 +96,8 @@ class BasicCitusTest < Minitest::Test
   def test_node_sizes
     assert PgHero.node_sizes
   end
+
+  def test_citus_settings
+    assert PgHero.citus_settings
+  end
 end
