@@ -215,6 +215,48 @@ module PgHero
             1, 3, 2 DESC
         SQL
       end
+
+      def citus_settings
+        names =
+            %i(
+                  citus.max_worker_nodes_tracked
+                  citus.use_secondary_nodes
+                  citus.cluster_name
+                  citus.enable_version_checks
+                  citus.log_distributed_deadlock_detection
+                  citus.distributed_deadlock_detection_factor
+                  citus.multi_shard_commit_protocol
+                  citus.shard_replication_factor
+                  citus.shard_count
+                  citus.shard_max_size
+                  citus.limit_clause_row_fetch_count
+                  citus.count_distinct_error_rate
+                  citus.task_assignment_policy
+                  citus.binary_worker_copy_format
+                  citus.binary_master_copy_format
+                  citus.max_intermediate_result_size
+                  citus.enable_ddl_propagation
+                  citus.all_modifications_commutative
+                  citus.max_task_string_size
+                  citus.remote_task_check_interval
+                  citus.task_executor_type
+                  citus.multi_task_query_log_level
+                  citus.enable_repartition_joins
+                  citus.task_tracker_delay
+                  citus.max_tracked_tasks_per_node
+                  citus.max_assign_task_batch_size
+                  citus.max_running_tasks_per_node
+                  citus.partition_buffer_size
+                  citus.explain_all_tasks
+            )
+         citus_fetch_settings(names)
+      end
+
+      private
+
+      def citus_fetch_settings(names)
+        Hash[names.map { |name| [name[6..-1], select_one("SHOW #{name}")] }]
+      end
     end
   end
 end
