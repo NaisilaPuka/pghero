@@ -80,6 +80,16 @@ module PgHero
       end
     end
 
+    def data_distribution
+      @title = "Data Distribution"
+      @citus_enabled = @database.citus_enabled?
+      @colocated_shard_sizes = @database.colocated_shard_sizes
+      case params[:sort]
+      when "colocated_shards_size"
+        @colocated_shard_sizes.sort_by! { |c| c[:colocated_shards_size] }.reverse!
+      end
+    end
+
     def space
       @title = "Space"
       @citus_enabled = @database.citus_enabled?
