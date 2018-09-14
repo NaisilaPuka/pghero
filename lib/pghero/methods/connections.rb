@@ -25,9 +25,9 @@ module PgHero
       def citus_worker_connection_sources
         worker_conn_sources = select_all <<-SQL
           SELECT
-            result
+            result, nodeid
           FROM
-            run_command_on_workers($cmd$ SELECT
+            (SELECT (run_command_on_workers($cmd$ SELECT
                                            json_agg(row_to_json(worker_stat_activity))
                                          FROM(
                                            SELECT
@@ -41,19 +41,23 @@ module PgHero
                                            GROUP BY
                                              1, 2, 3, 4
                                            ORDER BY
-                                             5 DESC, 1, 2, 3, 4) worker_stat_activity $cmd$)
+                                             5 DESC, 1, 2, 3, 4) worker_stat_activity $cmd$)).* ) w
+          JOIN
+            pg_dist_node pn ON (pn.nodename = w.nodename AND pn.nodeport = w.nodeport)
         SQL
 
         worker_conn_sources.map! {|wcs| select_all <<-SQL
           SELECT
-            database,
-            user,
-            source,
-            ip,
-            total_connections
+            nodeid,
+            (json_array_elements(result::json)->>'database')::name AS database,
+            (json_array_elements(result::json)->>'user')::name AS user,
+            (json_array_elements(result::json)->>'source')::text AS source,
+            (json_array_elements(result::json)->>'ip')::inet AS ip,
+            (json_array_elements(result::json)->>'total_connections')::int AS total_connections
           FROM
-            json_to_recordset('#{wcs[:result]}'::json)
-            AS worker_stats("database" name, "user" name, "source" text, "ip" inet, "total_connections" int)
+            (SELECT #{wcs[:nodeid]} AS nodeid, '#{wcs[:result]}' AS result) w
+          WHERE
+            w.result != ''
           SQL
         }
       end

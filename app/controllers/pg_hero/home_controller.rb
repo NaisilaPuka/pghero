@@ -144,6 +144,9 @@ module PgHero
       @show_migrations = PgHero.show_migrations
       @system_stats_enabled = @database.system_stats_enabled?
       @index_bloat = [] # @database.index_bloat
+      if @citus_enabled
+        @node_sizes = @database.node_sizes
+      end
     end
 
     def relation_space
