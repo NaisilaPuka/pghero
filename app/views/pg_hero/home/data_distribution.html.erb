@@ -91,12 +91,12 @@
             <table style="margin-bottom: 0px; color: inherit;" cellpadding="0" cellspacing="0">
               <% shards.each do |name, size| %>
                 <tr>
-                  <td style = "border-top: none;" colspan = "3">
+                  <td colspan = "3">
                     <span style="word-break: break-all;">
                       <%= name %>
                     </span>
                   </td>
-                  <td style = "border-top: none;">
+                  <td>
                     <span style="word-break: break-all;">
                       <%= PgHero.pretty_size(size) %>
                     </span>
