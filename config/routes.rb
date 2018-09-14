@@ -2,6 +2,7 @@ PgHero::Engine.routes.draw do
   scope "(:database)", constraints: proc { |req| (PgHero.config["databases"].keys + [nil]).include?(req.params[:database]) } do
     get "cluster_info", to: "home#cluster_info"
     get "data_distribution", to:"home#data_distribution"
+    get "landlord", to:"home#landlord"
     get "space", to: "home#space"
     get "space/:relation", to: "home#relation_space", as: :relation_space
     get "index_bloat", to: "home#index_bloat"
@@ -24,6 +25,7 @@ PgHero::Engine.routes.draw do
     post "enable_query_stats", to: "home#enable_query_stats"
     post "explain", to: "home#explain"
     post "reset_query_stats", to: "home#reset_query_stats"
+    post "reset_landlord_stats", to: "home#reset_landlord_stats"
 
     # legacy routes
     get "system_stats" => redirect("system")
