@@ -88,4 +88,8 @@ class BasicCitusTest < Minitest::Test
   def test_shard_data_distribution
     assert PgHero.shard_data_distribution('users', 'id')
   end
+
+  def test_dist_tables_extended
+    assert PgHero.dist_tables_extended
+  end
 end

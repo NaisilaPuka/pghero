@@ -1,6 +1,6 @@
 <div class="content">
   <h1>Cluster Info</h1>
-    <p>Citus Version: <%= @citus_version %></p>
+    <p><b>Citus Version: <%= @citus_version %></b></p>
   <h3>Worker Nodes</h3>
   <table class="table nodes-table">
     <thead>
@@ -50,6 +50,59 @@
           <td>
             <span style="word-break: break-all;">
               <%= PgHero.pretty_size(node_info[:size]) %>
+            </span>
+          </td>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+  <h3>Distributed Tables</h3>
+  <p><b><span style="color: #09436a;">NOTE: </span></b><em>Size</em> stands for all the disk space used by the shards of the table, including all indexes.</p>
+  <table class="table nodes-table">
+    <thead>
+      <tr>
+        <th style="width: 11%;"><%= link_to "Coloc. ID", {} %></th>
+        <th colspan = 2><%= link_to "Name", {sort: "dist_table_name"} %></th>
+        <th>Dist. Method</th>
+        <th>Dist. Column</th>
+        <th style="width: 11%;">Shards</th>
+        <th style="width: 12%;"><%= link_to "Size", {sort: "part_size"} %></th>
+      </tr>
+    </thead>
+    <tbody>
+      <% @dist_tables_extended.each do |dist_table| %>
+        <tr>
+          <td style="width: 11%;">
+            <span style="word-break: break-all;">
+              <%= number_with_delimiter(dist_table[:coloc_id]) %>
+            </span>
+          </td>
+          <td colspan = 2>
+            <span style="word-break: break-all;">
+              <%= dist_table[:dist_table_name] %>
+            </span>
+            <% if dist_table[:schema] != "public" %>
+              <span class="text-muted"><%= dist_table[:schema] %></span>
+            <% end %>
+          </td>
+          <td>
+            <span style="word-break: break-all;">
+              <%= dist_table[:partmethod] %>
+            </span>
+          </td>
+          <td>
+            <span style="word-break: break-all;">
+              <%= dist_table[:partition_column] %>
+            </span>
+          </td>
+          <td style="width: 11%;">
+            <span style="word-break: break-all;">
+              <%= dist_table[:shard_count] %>
+            </span>
+          </td>
+          <td style="width: 12%;">
+            <span style="word-break: break-all;">
+              <%= PgHero.pretty_size(dist_table[:part_size]) %>
             </span>
           </td>
         </tr>
