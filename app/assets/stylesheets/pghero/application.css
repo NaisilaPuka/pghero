@@ -180,7 +180,7 @@ hr {
   padding: 6px 140px 20px 140px;
 }
 
-.queries-table th a, .space-table th a {
+.queries-table th a, .space-table th a, .nodes-table th a {
   color: inherit;
 }
 
