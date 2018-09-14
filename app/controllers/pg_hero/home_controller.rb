@@ -83,6 +83,10 @@ module PgHero
     def data_distribution
       @title = "Data Distribution"
       @citus_enabled = @database.citus_enabled?
+      @distributed_tables = @database.distributed_tables
+      @distributed_tables.each do |distributed_table|
+        distributed_table[:shards] = @database.shard_data_distribution(distributed_table[:logicalrelid], distributed_table[:partition_column])
+      end
       @colocated_shard_sizes = @database.colocated_shard_sizes
       case params[:sort]
       when "colocated_shards_size"

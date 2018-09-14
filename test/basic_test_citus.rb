@@ -80,4 +80,12 @@ class BasicCitusTest < Minitest::Test
   def test_colocated_shard_sizes
     assert PgHero.colocated_shard_sizes
   end
+
+  def test_distributed_tables
+    assert PgHero.distributed_tables
+  end
+
+  def test_shard_data_distribution
+    assert PgHero.shard_data_distribution('users', 'id')
+  end
 end

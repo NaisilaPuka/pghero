@@ -85,6 +85,13 @@ td {
   vertical-align: top;
 }
 
+tr.details {
+  cursor: pointer;
+}
+ tr.details + tr {
+  display: none;
+}
+
 pre {
   background-color: #eee;
   padding: 10px;
